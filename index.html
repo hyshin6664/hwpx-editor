@@ -3,739 +3,384 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>한글 간단 편집기 (HWPX)</title>
-<meta name="description" content="브라우저 안에서 .hwpx 파일을 열고 폴라리스 오피스처럼 표·서식까지 보면서 편집하는 무료 편집기. 서버 업로드 없음.">
+<title>한글 간단 편집기</title>
+<meta name="description" content=".hwp · .hwpx 한글 문서를 브라우저에서 100% 똑같이 보면서 편집하고 다시 받는 무료 편집기. 서버 업로드 없음.">
 <style>
   *,*::before,*::after { box-sizing: border-box; }
-  html,body { margin:0; padding:0; height:100%; }
+  html,body { margin:0; padding:0; height:100%; overflow:hidden; }
   body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", "맑은 고딕", system-ui, sans-serif;
-    color: #1f2937;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+    color: #111827;
     background: #f3f4f6;
-    line-height: 1.55;
-    display:flex; flex-direction:column;
-    min-height:100vh;
+    display: flex; flex-direction: column;
   }
 
   /* App bar */
-  .appbar { display:flex; align-items:center; gap:14px; padding:8px 16px; background:#fff; border-bottom:1px solid #e5e7eb; }
-  .appbar .brand { display:flex; align-items:center; gap:8px; }
-  .appbar .brand .logo { width:28px; height:28px; border-radius:6px; background:linear-gradient(135deg,#2563eb,#1d4ed8); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:14px; }
-  .appbar .brand .name { font-size:14px; font-weight:600; color:#111827; }
-  .appbar .brand .badge { font-size:11px; padding:2px 7px; border-radius:999px; background:#ecfdf5; color:#047857; }
-  .appbar .spacer { flex:1; }
-  .appbar a { color:#6b7280; font-size:13px; text-decoration:none; }
-  .appbar a:hover { color:#111827; }
+  .appbar {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    padding: 8px 14px;
+    background: #ffffff;
+    border-bottom: 1px solid #e5e7eb;
+    box-shadow: 0 1px 0 rgba(0,0,0,.02);
+    flex: 0 0 auto;
+  }
+  .brand { display:flex; align-items:center; gap:8px; padding-right: 6px; }
+  .brand .logo {
+    width: 28px; height: 28px; border-radius: 6px;
+    background: linear-gradient(135deg,#2563eb,#1d4ed8); color:#fff;
+    display:flex; align-items:center; justify-content:center;
+    font-weight: 700; font-size: 14px;
+  }
+  .brand .name { font-size: 14px; font-weight: 600; color:#111827; white-space: nowrap; }
+  .filename { color:#6b7280; font-size:12px; margin-left:6px; max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .spacer { flex: 1; }
 
-  /* Tabs */
-  .tabs { display:flex; background:#fafafa; border-bottom:1px solid #e5e7eb; padding:0 12px; }
-  .tabs .tab { padding:8px 14px; font-size:13px; color:#6b7280; border-bottom:2px solid transparent; cursor:default; }
-  .tabs .tab.active { color:#2563eb; border-bottom-color:#2563eb; font-weight:600; }
-
-  /* Toolbar */
-  .toolbar { display:flex; flex-wrap:wrap; gap:6px; align-items:center; padding:8px 12px; background:#fff; border-bottom:1px solid #e5e7eb; }
-  .toolbar .group { display:flex; gap:4px; align-items:center; }
-  .toolbar .sep { width:1px; align-self:stretch; background:#e5e7eb; margin:4px 6px; }
-  .toolbar .meta { color:#6b7280; font-size:12px; margin-left:auto; padding-right:4px; }
-  .btn { font-family:inherit; font-size:13px; border:1px solid transparent; background:transparent; color:#374151; padding:6px 10px; border-radius:6px; cursor:pointer; display:inline-flex; align-items:center; gap:6px; transition:background .12s, color .12s, border-color .12s; white-space:nowrap; }
-  .btn:hover { background:#f3f4f6; color:#111827; }
+  .btn {
+    font-family: inherit; font-size: 13px;
+    border: 1px solid #d1d5db; background: #ffffff; color: #1f2937;
+    padding: 7px 12px; border-radius: 7px; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 6px;
+    transition: background .12s, border-color .12s, color .12s;
+    white-space: nowrap;
+  }
+  .btn:hover { background: #f3f4f6; border-color: #9ca3af; }
   .btn:disabled { opacity:.5; cursor:not-allowed; }
-  .btn .ico { font-size:14px; line-height:1; }
-  .btn.primary { background:#2563eb; color:#fff; border-color:#2563eb; }
+  .btn.primary { background:#2563eb; border-color:#2563eb; color:#fff; }
   .btn.primary:hover { background:#1d4ed8; border-color:#1d4ed8; }
-  .btn.outline { border-color:#d1d5db; }
-  .btn.outline:hover { border-color:#9ca3af; }
-  .find-input { font:inherit; font-size:13px; padding:6px 10px; border:1px solid #d1d5db; border-radius:6px; background:#fff; color:#111827; width:130px; min-width:0; }
-  .find-input:focus { outline:none; border-color:#2563eb; }
-  .find-arrow { color:#94a3b8; font-size:13px; padding:0 2px; }
-  .zoom { display:flex; align-items:center; gap:6px; }
-  .zoom input[type=range] { width:100px; }
-  .zoom .pct { font-size:12px; color:#6b7280; min-width:38px; text-align:right; }
+  .btn .ico { font-size: 14px; line-height: 1; }
 
-  /* Notice */
-  .notice { display:flex; align-items:center; gap:8px; padding:8px 16px; background:#fffbeb; border-bottom:1px solid #fde68a; color:#92400e; font-size:13px; }
-  .notice .x { margin-left:auto; cursor:pointer; color:#92400e; font-size:16px; line-height:1; background:transparent; border:none; padding:2px 6px; }
-  .notice.hidden { display:none; }
+  .group { display: flex; gap: 4px; align-items: center; }
+  .sep { width: 1px; align-self: stretch; background: #e5e7eb; margin: 4px 6px; }
 
-  /* Main */
-  main { flex:1; overflow-y:auto; background:#f3f4f6; padding:24px 16px 80px; }
+  #picker { display: none; }
 
-  /* Empty / drop view */
-  .empty-view { max-width:560px; margin:80px auto 0; text-align:center; }
-  .empty-view h2 { font-size:22px; color:#111827; margin:0 0 8px; }
-  .empty-view .desc { color:#6b7280; font-size:14px; margin:0 0 24px; }
-  #drop { border:2px dashed #cbd5e1; border-radius:14px; background:#fff; padding:48px 20px; cursor:pointer; transition:border-color .15s, background .15s; }
-  #drop:hover, #drop.hover { border-color:#2563eb; background:#eff6ff; }
-  #drop .ico { font-size:40px; margin-bottom:10px; }
-  #drop .main-text { font-size:15px; color:#111827; font-weight:600; }
-  #drop .sub-text { color:#6b7280; font-size:13px; margin-top:4px; }
-  #picker { display:none; }
-  .feat { margin-top:18px; background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:14px 16px; text-align:left; font-size:13px; color:#4b5563; }
-  .feat b { color:#111827; }
-  .feat ul { margin:6px 0 0; padding-left:18px; }
-  .feat ul + b { display:block; margin-top:12px; }
-  .feat a { color:#2563eb; }
+  /* Main editor area */
+  main { flex: 1; position: relative; min-height: 0; background: #f3f4f6; }
+  #editorHost { width: 100%; height: 100%; }
+  #editorHost iframe { width: 100%; height: 100%; border: 0; display: block; }
 
-  /* Document page */
-  .page-wrap { max-width:880px; margin:0 auto; }
-  .page { background:#fff; border:1px solid #e5e7eb; border-radius:4px; box-shadow:0 1px 3px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04); padding:56px 64px; min-height:60vh; }
-  .page-title { font-size:11px; color:#94a3b8; margin-bottom:16px; padding-bottom:8px; border-bottom:1px dashed #e5e7eb; }
-
-  /* Paragraph */
-  .para {
-    position:relative;
-    padding:2px 8px 2px 32px;
-    margin:2px -8px;
-    border-radius:4px;
-    font-size: var(--doc-fs, 15px);
-    line-height:1.7;
-    color:#111827;
-    cursor:text;
-    word-break: keep-all; overflow-wrap: break-word;
-    transition:background .12s;
-    min-height:1.7em;
+  /* Welcome / Loading overlay */
+  .overlay {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: #f3f4f6;
+    z-index: 5;
+    padding: 16px;
   }
-  .para:hover { background:#f9fafb; }
-  .para:focus { outline:none; background:#eff6ff; box-shadow: inset 3px 0 0 #2563eb; }
-  .para.changed { background:#fffbeb; box-shadow: inset 3px 0 0 #f59e0b; }
-  .para.changed:focus { background:#fef3c7; }
-  .para[data-num]::before {
-    content: attr(data-num);
-    position:absolute; left:4px; top:6px;
-    font-size:10px; color:#cbd5e1;
-    user-select:none;
-    font-variant-numeric: tabular-nums;
+  .overlay.hidden { display: none; }
+  .center {
+    max-width: 540px; width: 100%; text-align: center;
+    background: #fff; border: 1px solid #e5e7eb; border-radius: 14px;
+    padding: 36px 28px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.05), 0 6px 24px rgba(0,0,0,.04);
   }
+  .center h2 { font-size: 20px; margin: 0 0 6px; color:#111827; }
+  .center .desc { color:#6b7280; font-size: 14px; margin: 0 0 22px; }
+  .drop {
+    border: 2px dashed #cbd5e1; border-radius: 12px;
+    padding: 32px 20px; cursor: pointer;
+    transition: border-color .15s, background .15s;
+  }
+  .drop:hover, .drop.hover { border-color: #2563eb; background: #eff6ff; }
+  .drop .ico { font-size: 36px; }
+  .drop .main-text { font-size: 14px; color:#111827; font-weight: 600; margin-top: 6px; }
+  .drop .sub-text { color:#6b7280; font-size: 12px; margin-top: 4px; }
 
-  /* Tables */
-  .doc-table {
-    border-collapse: collapse;
-    width: 100%;
-    margin: 12px 0;
-    font-size: var(--doc-fs, 15px);
-    table-layout: fixed;
+  .features {
+    margin-top: 18px; text-align: left; font-size: 12px; color:#4b5563;
+    background: #f9fafb; border-radius: 10px; padding: 12px 14px;
   }
-  .doc-table td {
-    border: 1px solid #4b5563;
-    padding: 6px 10px;
-    vertical-align: middle;
-    background: #fff;
-    word-break: keep-all;
-    overflow-wrap: break-word;
-  }
-  .doc-table .para {
-    padding:1px 4px;
-    margin:0;
-    min-height: 1.5em;
-    line-height: 1.55;
-    border-radius: 3px;
-  }
-  .doc-table .para[data-num]::before { display:none; }
+  .features b { color:#111827; }
+  .features ul { margin: 4px 0 0; padding-left: 18px; }
 
-  .doc-empty { color:#9ca3af; text-align:center; padding:60px 0; font-size:14px; }
-
-  /* Status overlay */
-  .status-overlay { position:fixed; inset:0; background:rgba(15,23,42,0.55); display:flex; align-items:center; justify-content:center; z-index:100; backdrop-filter: blur(2px); }
-  .status-overlay.hidden { display:none; }
-  .status-card { background:#fff; border-radius:14px; padding:28px 36px; box-shadow:0 12px 40px rgba(0,0,0,.25); text-align:center; min-width:280px; max-width:90vw; }
-  .status-card .spinner { width:36px; height:36px; border:3px solid #e5e7eb; border-top-color:#2563eb; border-radius:50%; margin:0 auto 14px; animation:spin .8s linear infinite; }
+  .spinner {
+    width: 32px; height: 32px;
+    border: 3px solid #e5e7eb; border-top-color: #2563eb;
+    border-radius: 50%; margin: 0 auto 12px;
+    animation: spin .8s linear infinite;
+  }
   @keyframes spin { to { transform: rotate(360deg); } }
-  .status-card .text { color:#111827; font-size:15px; font-weight:600; }
-  .status-card .sub { color:#6b7280; font-size:12px; margin-top:6px; }
+  .loading-text { color:#374151; font-size:14px; font-weight:600; }
+  .loading-sub { color:#6b7280; font-size:12px; margin-top:4px; }
 
-  footer { padding:14px; text-align:center; color:#9ca3af; font-size:11px; border-top:1px solid #e5e7eb; background:#fafafa; }
+  footer {
+    flex: 0 0 auto;
+    text-align: center; padding: 8px;
+    color: #94a3b8; font-size: 11px;
+    border-top: 1px solid #e5e7eb; background: #fafafa;
+  }
   footer a { color:#6b7280; }
 
-  @media (max-width:700px) {
-    .page { padding:24px 18px; }
-    .toolbar { padding:6px 8px; gap:4px; }
-    .find-input { width:90px; }
-    .zoom input[type=range] { width:70px; }
-    main { padding:14px 8px 60px; }
-    .doc-table td { padding:4px 6px; }
+  @media (max-width: 720px) {
+    .filename { display:none; }
+    .btn { padding: 6px 10px; font-size: 12px; }
+    .brand .name { font-size: 13px; }
   }
-  @media (max-width:480px) {
-    .tabs { display:none; }
-    .toolbar .meta { display:none; }
-    .appbar .brand .badge { display:none; }
+  @media (max-width: 480px) {
+    .sep { display:none; }
+    .appbar { padding: 6px 8px; gap:4px; }
+    .btn .label { display:none; }
   }
 </style>
 </head>
 <body>
 
-<!-- App bar -->
 <div class="appbar">
   <div class="brand">
     <div class="logo">한</div>
     <div class="name">한글 간단 편집기</div>
-    <div class="badge">.hwpx</div>
   </div>
+  <span class="filename" id="filenameLabel"></span>
   <div class="spacer"></div>
-  <a href="https://github.com/hyshin6664/hwpx-editor" target="_blank" rel="noopener">GitHub</a>
-</div>
 
-
-<!-- Toolbar -->
-<div class="toolbar">
   <div class="group">
-    <button class="btn outline" id="openBtn"><span class="ico">📁</span>다른 파일</button>
-    <button class="btn primary" id="saveBtn" disabled><span class="ico">💾</span>다운로드</button>
+    <button class="btn" id="openBtn" disabled><span class="ico">📁</span><span class="label">파일 열기</span></button>
   </div>
   <div class="sep"></div>
   <div class="group">
-    <input class="find-input" id="findInput" type="text" placeholder="찾을 문구">
-    <span class="find-arrow">→</span>
-    <input class="find-input" id="replaceInput" type="text" placeholder="바꿀 문구">
-    <button class="btn outline" id="replaceAllBtn">모두 바꾸기</button>
+    <button class="btn primary" id="saveHwpxBtn" disabled><span class="ico">💾</span><span class="label">.hwpx 받기</span></button>
+    <button class="btn" id="saveHwpBtn" disabled><span class="ico">💾</span><span class="label">.hwp 받기</span></button>
+    <button class="btn" id="savePdfBtn" disabled><span class="ico">📄</span><span class="label">PDF 받기</span></button>
   </div>
-  <div class="sep"></div>
-  <div class="group zoom">
-    <span class="ico" style="font-size:13px;color:#6b7280;">A</span>
-    <input type="range" id="zoom" min="80" max="200" value="100" step="5">
-    <span class="pct" id="zoomPct">100%</span>
-  </div>
-  <span class="meta" id="meta">파일 없음</span>
+
+  <input type="file" id="picker" accept=".hwp,.hwpx">
 </div>
 
-<!-- Yellow notice -->
-<div class="notice" id="notice">
-  <span>💡</span>
-  <span>현재 작업 중인 문서는 자동저장되지 않아요. 수정 완료 후 <b>다운로드</b> 버튼으로 받아주세요.</span>
-  <button class="x" id="noticeClose" aria-label="닫기">×</button>
-</div>
+<main>
+  <div id="editorHost"></div>
 
-<main id="main">
-  <!-- Empty / drop view -->
-  <div id="emptyView" class="empty-view">
-    <h2>HWPX 파일을 열어주세요</h2>
-    <p class="desc">파일은 여러분의 브라우저 안에서만 처리됩니다. 서버에 올라가지 않아요.</p>
-    <div id="drop" tabindex="0" role="button" aria-label="HWPX 파일 선택">
-      <div class="ico">📄</div>
-      <div class="main-text">.hwpx 파일을 끌어다 놓거나 클릭해서 선택</div>
-      <div class="sub-text">맥 · 윈도우 · 안드로이드 · 아이폰 모두 동작합니다</div>
-      <input type="file" id="picker" accept=".hwpx,.hwp">
-    </div>
-    <div class="feat">
-      <b>이런 작업에 쓰세요</b>
-      <ul>
-        <li>이름 · 날짜 · 금액 같은 문구만 살짝 바꾸기</li>
-        <li>찾아바꾸기로 여러 곳을 한 번에 일괄 수정</li>
-        <li>표 안의 셀을 직접 클릭해서 편집</li>
-      </ul>
-      <b>한계</b>
-      <ul>
-        <li>이미지 · 그림은 표시되지 않습니다 (저장 시 그대로 보존됩니다)</li>
-        <li>한 문단 안에서 일부분만 다른 서식(굵게/색상)이 있는 경우, 해당 문단을 수정하면 인라인 서식은 통일됩니다</li>
-        <li><b>구형 <code>.hwp</code> 파일</b>도 받습니다 — 자동으로 <code>.hwpx</code> 로 변환되어 편집 가능합니다 (실험적, 변환 실패 시 <a href="https://www.hancomspace.com" target="_blank" rel="noopener">한컴스페이스</a> 권장)</li>
-      </ul>
+  <div class="overlay" id="welcome">
+    <div class="center">
+      <h2>한글 문서 편집기</h2>
+      <p class="desc">파일은 여러분의 브라우저 안에서만 처리됩니다 — 서버 업로드 없음 · 무료 · 광고 없음</p>
+
+      <div class="drop" id="dropZone" tabindex="0" role="button">
+        <div class="ico">📄</div>
+        <div class="main-text">.hwp 또는 .hwpx 파일을 끌어다 놓거나 클릭해서 선택</div>
+        <div class="sub-text">맥 · 윈도우 · 안드로이드 · 아이폰 모두 동작합니다</div>
+      </div>
+
+      <div class="features">
+        <b>이런 작업에 쓰세요</b>
+        <ul>
+          <li>화면에 보이는 그대로 100% 표시 (rhwp 엔진)</li>
+          <li>글자 클릭해서 수정 → 그 자리에서 바로 편집</li>
+          <li>다운로드: .hwpx · .hwp · PDF</li>
+          <li>구버전 .hwp · 신버전 .hwpx 모두 지원</li>
+        </ul>
+      </div>
     </div>
   </div>
 
-  <!-- Document view -->
-  <div id="docView" class="page-wrap" hidden>
-    <div class="page">
-      <div class="page-title" id="docTitle"></div>
-      <div id="bodyContent"></div>
+  <div class="overlay hidden" id="loading">
+    <div class="center">
+      <div class="spinner"></div>
+      <div class="loading-text" id="loadingText">에디터 준비 중…</div>
+      <div class="loading-sub" id="loadingSub">처음 한 번만 5~10초 걸립니다</div>
     </div>
   </div>
 </main>
 
 <footer>
-  오픈소스 · 100% 클라이언트 처리 · 광고 없음 · 추적 없음 ·
-  <a href="https://github.com/hyshin6664/hwpx-editor" target="_blank" rel="noopener">GitHub</a>
+  100% 클라이언트 처리 · 광고 없음 · 추적 없음 ·
+  <a href="https://github.com/hyshin6664/hwpx-editor" target="_blank" rel="noopener">GitHub</a> ·
+  엔진 <a href="https://github.com/edwardkim/rhwp" target="_blank" rel="noopener">rhwp</a> (MIT)
 </footer>
 
-<!-- Loading overlay -->
-<div class="status-overlay hidden" id="statusOverlay">
-  <div class="status-card">
-    <div class="spinner"></div>
-    <div class="text" id="statusText">처리 중…</div>
-    <div class="sub" id="statusSub"></div>
-  </div>
-</div>
-
-<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-<script>
+<script type="module">
 "use strict";
 
 const $ = (id) => document.getElementById(id);
-const dropEl = $("drop");
-const pickerEl = $("picker");
-const emptyView = $("emptyView");
-const docView = $("docView");
-const bodyContent = $("bodyContent");
-const docTitleEl = $("docTitle");
-const metaEl = $("meta");
-const saveBtn = $("saveBtn");
+const editorHost = $("editorHost");
+const welcome = $("welcome");
+const loading = $("loading");
+const loadingText = $("loadingText");
+const loadingSub = $("loadingSub");
+const dropZone = $("dropZone");
+const picker = $("picker");
+const filenameLabel = $("filenameLabel");
 const openBtn = $("openBtn");
-const findInput = $("findInput");
-const replaceInput = $("replaceInput");
-const replaceAllBtn = $("replaceAllBtn");
-const zoomEl = $("zoom");
-const zoomPct = $("zoomPct");
-const noticeEl = $("notice");
-const noticeClose = $("noticeClose");
+const saveHwpxBtn = $("saveHwpxBtn");
+const saveHwpBtn = $("saveHwpBtn");
+const savePdfBtn = $("savePdfBtn");
 
-let state = null;
-// state = {
-//   zip, filename,
-//   sections: [{ name, doc }],
-//   styles: { charPr: Map(id -> {...}), paraPr: Map(id -> {...}) },
-//   paragraphs: [{ pEl, tList, originalText, el }],
-//   modifiedCount,
-//   paraCounter
-// }
+let editor = null;
+let editorReady = false;
+let currentFilename = "";
 
-// ── Drag & drop ────────────────────────────────────────────────────────────
-dropEl.addEventListener("click", () => pickerEl.click());
-dropEl.addEventListener("keydown", (e) => { if (e.key==="Enter"||e.key===" ") { e.preventDefault(); pickerEl.click(); } });
-pickerEl.addEventListener("change", (e) => { if (e.target.files[0]) loadFile(e.target.files[0]); });
-["dragenter","dragover"].forEach(ev => dropEl.addEventListener(ev, (e)=>{ e.preventDefault(); dropEl.classList.add("hover"); }));
-["dragleave","drop"].forEach(ev => dropEl.addEventListener(ev, () => dropEl.classList.remove("hover")));
-dropEl.addEventListener("drop", (e) => {
-  e.preventDefault();
-  const f = e.dataTransfer.files && e.dataTransfer.files[0];
-  if (f) loadFile(f);
-});
-window.addEventListener("dragover", (e) => { if (state) e.preventDefault(); });
-window.addEventListener("drop", (e) => {
-  if (!state) return;
-  e.preventDefault();
-  const f = e.dataTransfer.files && e.dataTransfer.files[0];
-  if (f) loadFile(f);
-});
-
-// ── Buttons ────────────────────────────────────────────────────────────────
-openBtn.addEventListener("click", () => {
-  if (state && state.modifiedCount > 0 && !confirm("수정한 내용이 다운로드되지 않았습니다. 정말 다른 파일을 여시겠어요?")) return;
-  pickerEl.click();
-});
-saveBtn.addEventListener("click", saveFile);
-replaceAllBtn.addEventListener("click", runReplaceAll);
-findInput.addEventListener("keydown", (e) => { if (e.key === "Enter") runReplaceAll(); });
-replaceInput.addEventListener("keydown", (e) => { if (e.key === "Enter") runReplaceAll(); });
-noticeClose.addEventListener("click", () => noticeEl.classList.add("hidden"));
-
-zoomEl.addEventListener("input", () => {
-  const v = parseInt(zoomEl.value, 10);
-  document.documentElement.style.setProperty("--doc-fs", (15 * v / 100).toFixed(1) + "px");
-  zoomPct.textContent = v + "%";
-});
-window.addEventListener("beforeunload", (e) => {
-  if (state && state.modifiedCount > 0) { e.preventDefault(); e.returnValue = ""; }
-});
-
-// ── Status overlay ─────────────────────────────────────────────────────────
-const statusOverlay = $("statusOverlay");
-const statusText = $("statusText");
-const statusSub = $("statusSub");
-function showStatus(text, sub) {
-  statusText.textContent = text || "처리 중…";
-  statusSub.textContent = sub || "";
-  statusOverlay.classList.remove("hidden");
+function showLoading(text, sub) {
+  loadingText.textContent = text || "처리 중…";
+  loadingSub.textContent = sub || "";
+  loading.classList.remove("hidden");
 }
-function hideStatus() { statusOverlay.classList.add("hidden"); }
+function hideLoading() { loading.classList.add("hidden"); }
+function hideWelcome() { welcome.classList.add("hidden"); }
 
-// ── hwp.js (lazy loaded) ───────────────────────────────────────────────────
-let _hwpxjsPromise = null;
-function loadHwpxJs() {
-  if (!_hwpxjsPromise) {
-    _hwpxjsPromise = import(
-      "https://cdn.jsdelivr.net/npm/@ssabrojs/hwpxjs/dist/browser/hwpxjs.browser.mjs"
-    );
+function setBaseName() {
+  return (currentFilename || "document").replace(/\.(hwp|hwpx)$/i, "");
+}
+
+function downloadBytes(bytes, filename, type) {
+  const blob = bytes instanceof Blob ? bytes : new Blob([bytes], { type });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
+// 에디터 부팅 (페이지 로드 직후)
+async function bootEditor() {
+  showLoading("에디터 준비 중…", "rhwp 엔진을 처음 가져옵니다 (한 번만, 5~10초)");
+  try {
+    const mod = await import("https://cdn.jsdelivr.net/npm/@rhwp/editor/+esm");
+    const createEditor = mod.createEditor || (mod.default && mod.default.createEditor);
+    if (typeof createEditor !== "function") throw new Error("createEditor 함수를 찾지 못했습니다");
+
+    editor = await createEditor(editorHost);
+    editorReady = true;
+    openBtn.disabled = false;
+    hideLoading();
+  } catch (err) {
+    console.error(err);
+    hideLoading();
+    welcome.classList.remove("hidden");
+    alert("에디터 로드 실패. 새로고침 후 다시 시도해주세요.\n\n" + (err && err.message ? err.message : err));
   }
-  return _hwpxjsPromise;
 }
 
-// ── File load ──────────────────────────────────────────────────────────────
+// 파일 로드 (.hwp / .hwpx 둘 다 rhwp가 처리)
 async function loadFile(file) {
-  const lower = file.name.toLowerCase();
-
-  // 구형 .hwp → 자동으로 .hwpx 변환
-  if (lower.endsWith(".hwp") && !lower.endsWith(".hwpx")) {
-    try {
-      showStatus("구형 .hwp 파일을 .hwpx 로 변환 중…", "처음에는 라이브러리 다운로드로 5~10초 걸릴 수 있어요");
-      const mod = await loadHwpxJs();
-      const hwpToHwpx = mod.hwpToHwpx || (mod.default && mod.default.hwpToHwpx);
-      if (typeof hwpToHwpx !== "function") throw new Error("변환 함수(hwpToHwpx)를 찾지 못했습니다.");
-
-      showStatus("HWP 본문 파싱 중…", file.name);
-      const inBytes = new Uint8Array(await file.arrayBuffer());
-
-      showStatus("HWPX 패키징 중…", "표·이미지·서식 보존 시도");
-      const outBytes = await hwpToHwpx(inBytes, {
-        title: file.name.replace(/\.hwp$/i, ""),
-        creator: "hwpx-editor",
-      });
-
-      // 변환된 .hwpx 자동 다운로드 (사용자가 보관할 수 있게)
-      const newName = file.name.replace(/\.hwp$/i, ".hwpx");
-      const dlBlob = new Blob([outBytes], { type: "application/hwp+zip" });
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(dlBlob);
-      a.download = newName;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-
-      // 변환된 .hwpx 를 그대로 편집기에 로드
-      const newFile = new File([outBytes], newName, { type: "application/hwp+zip" });
-      hideStatus();
-      return await loadFile(newFile);
-    } catch (err) {
-      hideStatus();
-      console.error(err);
-      alert("구형 .hwp 자동변환 실패\n\n" +
-        (err && err.message ? "사유: " + err.message + "\n\n" : "") +
-        "한컴스페이스(무료)에서 .hwpx 로 저장 후 다시 시도해주세요.\n👉 https://www.hancomspace.com");
-      return;
-    }
-  }
-
-  if (!lower.endsWith(".hwpx")) {
-    alert(".hwpx 또는 .hwp 파일만 지원합니다.");
+  if (!editor || !editorReady) {
+    alert("에디터가 아직 준비 중입니다. 잠시 후 다시 시도해주세요.");
     return;
   }
-
+  const lower = file.name.toLowerCase();
+  if (!lower.endsWith(".hwp") && !lower.endsWith(".hwpx")) {
+    alert(".hwp 또는 .hwpx 파일만 지원합니다.");
+    return;
+  }
   try {
-    showStatus("HWPX 파일 여는 중…", file.name);
-    const zip = await JSZip.loadAsync(file);
-
-    // 1) 헤더 읽어서 스타일 맵 만들기 (있으면)
-    const styles = { charPr: new Map(), paraPr: new Map() };
-    const headerFile = zip.file("Contents/header.xml");
-    if (headerFile) {
-      try {
-        const xml = await headerFile.async("string");
-        const hdoc = new DOMParser().parseFromString(xml, "application/xml");
-        parseStyles(hdoc, styles);
-      } catch (e) { console.warn("header.xml 파싱 실패 (무시하고 진행):", e); }
-    }
-
-    // 2) 섹션 XML들
-    const sectionNames = Object.keys(zip.files)
-      .filter((n) => /^Contents\/section\d+\.xml$/i.test(n))
-      .sort();
-    if (sectionNames.length === 0) throw new Error("Contents/section*.xml 을 찾지 못했습니다.");
-
-    const sections = [];
-    for (const name of sectionNames) {
-      const xmlText = await zip.file(name).async("string");
-      const doc = new DOMParser().parseFromString(xmlText, "application/xml");
-      if (doc.getElementsByTagName("parsererror").length) throw new Error(name + " XML 파싱 오류");
-      sections.push({ name, doc });
-    }
-
-    state = { zip, filename: file.name, sections, styles, paragraphs: [], modifiedCount: 0, paraCounter: 0 };
-    render();
-    hideStatus();
+    showLoading("파일 여는 중…", file.name);
+    const buffer = await file.arrayBuffer();
+    const result = await editor.loadFile(buffer, file.name);
+    currentFilename = file.name;
+    filenameLabel.textContent = file.name;
+    saveHwpxBtn.disabled = false;
+    saveHwpBtn.disabled = false;
+    savePdfBtn.disabled = false;
+    hideWelcome();
+    hideLoading();
+    console.log("로드 완료:", result);
   } catch (err) {
-    hideStatus();
+    hideLoading();
     console.error(err);
     alert("파일 열기 실패: " + (err && err.message ? err.message : err));
   }
 }
 
-// ── Styles ─────────────────────────────────────────────────────────────────
-function parseStyles(hdoc, styles) {
-  // charPr: id, height(1/100pt), textColor, bold(attr 또는 child), italic, underline
-  const charPrEls = Array.from(hdoc.getElementsByTagNameNS("*", "charPr")).filter(e => e.localName === "charPr");
-  for (const el of charPrEls) {
-    const id = el.getAttribute("id");
-    if (!id) continue;
-    const heightAttr = el.getAttribute("height");
-    const height = heightAttr ? parseInt(heightAttr, 10) : 1000; // 1/100 pt
-    const textColor = el.getAttribute("textColor") || "#000000";
-    // bold/italic in OWPML are attributes ("0"/"1") or child elements depending on version
-    const boldAttr = el.getAttribute("bold");
-    const italicAttr = el.getAttribute("italic");
-    const bold = boldAttr === "1" || hasChildLocalName(el, "bold");
-    const italic = italicAttr === "1" || hasChildLocalName(el, "italic");
-    const underlineEl = childByLocalName(el, "underline");
-    const underline = underlineEl && (underlineEl.getAttribute("type") || "NONE") !== "NONE";
-    styles.charPr.set(id, {
-      fontSizePx: (height / 100) * (96 / 72),
-      color: textColor === "none" ? null : textColor,
-      bold, italic, underline,
-    });
-  }
-  // paraPr: id, align (LEFT/RIGHT/CENTER/JUSTIFY/DISTRIBUTE)
-  const paraPrEls = Array.from(hdoc.getElementsByTagNameNS("*", "paraPr")).filter(e => e.localName === "paraPr");
-  for (const el of paraPrEls) {
-    const id = el.getAttribute("id");
-    if (!id) continue;
-    const alignEl = childByLocalName(el, "align");
-    const align = alignEl ? (alignEl.getAttribute("horizontal") || "LEFT") : "LEFT";
-    const cssAlign = ({ LEFT:"left", RIGHT:"right", CENTER:"center", JUSTIFY:"justify", DISTRIBUTE:"justify" })[align] || "left";
-    styles.paraPr.set(id, { align: cssAlign });
-  }
-}
-function hasChildLocalName(el, name) {
-  for (const c of el.children) if (c.localName === name) return true;
-  return false;
-}
-function childByLocalName(el, name) {
-  for (const c of el.children) if (c.localName === name) return c;
-  return null;
-}
-
-// ── Render ─────────────────────────────────────────────────────────────────
-function render() {
-  docTitleEl.textContent = state.filename;
-  bodyContent.innerHTML = "";
-  state.paragraphs = [];
-  state.paraCounter = 0;
-
-  for (const sec of state.sections) {
-    walkAndRender(sec.doc.documentElement, bodyContent, false);
-  }
-
-  if (state.paragraphs.length === 0) {
-    bodyContent.innerHTML = '<div class="doc-empty">편집 가능한 텍스트가 없습니다.</div>';
-  }
-
-  emptyView.hidden = true;
-  docView.hidden = false;
-  saveBtn.disabled = false;
-  updateMeta();
-}
-
-function walkAndRender(node, container, insideTable) {
-  for (const child of Array.from(node.children)) {
-    const lname = child.localName;
-
-    if (lname === "p") {
-      // HWPX에서 표(hp:tbl)는 보통 p > run > ctrl > tbl 처럼 문단 안에 박혀있음.
-      // 1) 문단 내부의 직속(중첩 p/tbl 밖) tbl 들을 모두 찾아 렌더
-      // 2) 문단 자체의 텍스트(있으면)도 렌더 — 표 캡션/설명 등
-      const innerTbls = findDirectDescendantTables(child);
-      // 텍스트가 있거나 표 셀 내부면 paragraph도 렌더
-      renderParagraph(child, container, insideTable);
-      for (const tbl of innerTbls) renderTable(tbl, container);
-    } else if (lname === "tbl") {
-      renderTable(child, container);
-    } else {
-      walkAndRender(child, container, insideTable);
-    }
-  }
-}
-
-function findDirectDescendantTables(p) {
-  // p 후손 중 tbl 들 가져오되, 중첩된 p 또는 tbl 안에 들어있는 것은 제외
-  const all = Array.from(p.getElementsByTagNameNS("*", "tbl")).filter(e => e.localName === "tbl");
-  return all.filter(tbl => {
-    let n = tbl.parentNode;
-    while (n) {
-      if (n === p) return true;
-      if (n.localName === "p" || n.localName === "tbl") return false;
-      n = n.parentNode;
-    }
-    return false;
-  });
-}
-
-function collectDirectTextNodes(p) {
-  const all = Array.from(p.getElementsByTagNameNS("*", "t")).filter(e => e.localName === "t");
-  return all.filter((t) => {
-    let n = t.parentNode;
-    while (n) {
-      if (n === p) return true;
-      // 중첩된 p 또는 tbl 안의 t는 outer p 의 것이 아님
-      if (n.localName === "p" || n.localName === "tbl") return false;
-      n = n.parentNode;
-    }
-    return false;
-  });
-}
-
-function renderParagraph(pEl, container, insideTable) {
-  const tList = collectDirectTextNodes(pEl);
-  const originalText = tList.map(t => t.textContent || "").join("");
-  if (tList.length === 0) return;
-  // 본문(table 밖)에서 빈 문단은 건너뛰지만, 표 셀에서는 빈 셀이 보이도록 렌더
-  if (!insideTable && originalText.trim().length === 0) return;
-
-  const div = document.createElement("div");
-  div.className = "para";
-  div.contentEditable = "true";
-  div.spellcheck = false;
-  if (!insideTable) {
-    state.paraCounter++;
-    div.dataset.num = String(state.paraCounter).padStart(3, "0");
-  }
-
-  // 문단 정렬 적용 (paraPrIDRef 기반)
-  const paraPrIDRef = pEl.getAttribute("paraPrIDRef");
-  const paraStyle = paraPrIDRef && state.styles.paraPr.get(paraPrIDRef);
-  if (paraStyle && paraStyle.align && paraStyle.align !== "left") {
-    div.style.textAlign = paraStyle.align;
-  }
-
-  // 첫 run의 charPr를 문단 기본 폰트로 적용 (간이 처리)
-  const firstRun = Array.from(pEl.children).find(c => c.localName === "run");
-  if (firstRun) {
-    const charPrIDRef = firstRun.getAttribute("charPrIDRef");
-    const cp = charPrIDRef && state.styles.charPr.get(charPrIDRef);
-    if (cp) {
-      if (cp.fontSizePx && cp.fontSizePx > 0) div.style.fontSize = cp.fontSizePx.toFixed(1) + "px";
-      if (cp.color) div.style.color = cp.color;
-      if (cp.bold) div.style.fontWeight = "700";
-      if (cp.italic) div.style.fontStyle = "italic";
-      if (cp.underline) div.style.textDecoration = "underline";
-    }
-  }
-
-  div.textContent = originalText;
-
-  const info = { pEl, tList, originalText, el: div };
-  state.paragraphs.push(info);
-
-  div.addEventListener("input", () => onParaInput(info));
-  div.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      document.execCommand("insertLineBreak");
-    }
-  });
-  div.addEventListener("paste", (e) => {
-    e.preventDefault();
-    const text = (e.clipboardData || window.clipboardData).getData("text");
-    document.execCommand("insertText", false, text);
-  });
-
-  container.appendChild(div);
-}
-
-function renderTable(tblEl, container) {
-  const table = document.createElement("table");
-  table.className = "doc-table";
-
-  const trs = Array.from(tblEl.children).filter(c => c.localName === "tr");
-  for (const tr of trs) {
-    const trEl = document.createElement("tr");
-    const tcs = Array.from(tr.children).filter(c => c.localName === "tc");
-    for (const tc of tcs) {
-      const tdEl = document.createElement("td");
-      const cellSpan = childByLocalName(tc, "cellSpan");
-      if (cellSpan) {
-        const cs = parseInt(cellSpan.getAttribute("colSpan") || "1", 10);
-        const rs = parseInt(cellSpan.getAttribute("rowSpan") || "1", 10);
-        if (cs > 1) tdEl.colSpan = cs;
-        if (rs > 1) tdEl.rowSpan = rs;
-      }
-      const subList = childByLocalName(tc, "subList");
-      if (subList) {
-        walkAndRender(subList, tdEl, true);
-      }
-      trEl.appendChild(tdEl);
-    }
-    table.appendChild(trEl);
-  }
-  container.appendChild(table);
-}
-
-function onParaInput(p) {
-  const text = p.el.textContent;
-  const wasChanged = p.el.classList.contains("changed");
-  const isChanged = text !== p.originalText;
-  if (isChanged !== wasChanged) {
-    p.el.classList.toggle("changed", isChanged);
-    state.modifiedCount += isChanged ? 1 : -1;
-    updateMeta();
-  }
-}
-
-function updateMeta() {
-  if (!state) { metaEl.textContent = "파일 없음"; return; }
-  metaEl.textContent = "문단 " + state.paragraphs.length + "개" +
-    (state.modifiedCount > 0 ? " · 수정 " + state.modifiedCount + "곳" : "");
-}
-
-// ── Find & Replace ────────────────────────────────────────────────────────
-function runReplaceAll() {
-  if (!state) return;
-  const find = findInput.value;
-  if (!find) { findInput.focus(); return; }
-  const repl = replaceInput.value;
-  let count = 0;
-  for (const p of state.paragraphs) {
-    const cur = p.el.textContent;
-    if (cur.indexOf(find) === -1) continue;
-    const next = cur.split(find).join(repl);
-    if (next !== cur) {
-      p.el.textContent = next;
-      onParaInput(p);
-      count++;
-    }
-  }
-  if (count === 0) alert(`"${find}" 을(를) 찾지 못했습니다.`);
-}
-
-// ── Save ───────────────────────────────────────────────────────────────────
-async function saveFile() {
-  if (!state) return;
-  saveBtn.disabled = true;
-  const orig = saveBtn.innerHTML;
-  saveBtn.innerHTML = '<span class="ico">⏳</span>저장 중…';
-
+// .hwpx 저장
+saveHwpxBtn.addEventListener("click", async () => {
+  if (!editor) return;
+  const orig = saveHwpxBtn.innerHTML;
+  saveHwpxBtn.disabled = true;
+  saveHwpxBtn.innerHTML = '<span class="ico">⏳</span><span class="label">저장 중…</span>';
   try {
-    for (const p of state.paragraphs) {
-      const text = p.el.textContent;
-      if (text === p.originalText) continue;
-      if (p.tList.length === 0) continue;
-      p.tList[0].textContent = text;
-      for (let i = 1; i < p.tList.length; i++) p.tList[i].textContent = "";
+    let bytes;
+    // 1) editor.exportHwpx() 가 있으면 우선 사용
+    if (typeof editor.exportHwpx === "function") {
+      bytes = await editor.exportHwpx();
+    } else {
+      // 2) 폴백: editor.exportHwp() → hwpxjs.hwpToHwpx() 변환
+      const hwpBytes = await editor.exportHwp();
+      const hwpxjs = await import("https://cdn.jsdelivr.net/npm/@ssabrojs/hwpxjs/dist/browser/hwpxjs.browser.mjs");
+      const hwpToHwpx = hwpxjs.hwpToHwpx || (hwpxjs.default && hwpxjs.default.hwpToHwpx);
+      if (typeof hwpToHwpx !== "function") throw new Error("HWPX 변환 함수를 찾지 못했습니다");
+      bytes = await hwpToHwpx(hwpBytes, { creator: "hwpx-editor" });
     }
-
-    const ser = new XMLSerializer();
-    for (const sec of state.sections) {
-      let xml = ser.serializeToString(sec.doc);
-      if (!xml.startsWith("<?xml")) {
-        xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' + xml;
-      }
-      state.zip.file(sec.name, xml);
-    }
-
-    const mimeFile = state.zip.file("mimetype");
-    if (mimeFile) {
-      const mimeBytes = await mimeFile.async("uint8array");
-      state.zip.file("mimetype", mimeBytes, { compression: "STORE" });
-    }
-
-    const blob = await state.zip.generateAsync({
-      type: "blob",
-      mimeType: "application/hwp+zip",
-      compression: "DEFLATE",
-      compressionOptions: { level: 6 },
-    });
-
-    const stamp = new Date().toISOString().slice(0, 16).replace("T", "_").replace(/:/g, "-");
-    const baseName = state.filename.replace(/\.hwpx$/i, "");
-    const outName = baseName + "_수정_" + stamp + ".hwpx";
-
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = outName;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-
-    state.paragraphs.forEach((p) => {
-      p.originalText = p.el.textContent;
-      p.el.classList.remove("changed");
-    });
-    state.modifiedCount = 0;
-    updateMeta();
+    downloadBytes(bytes, setBaseName() + ".hwpx", "application/hwp+zip");
   } catch (err) {
     console.error(err);
-    alert("저장 실패: " + (err && err.message ? err.message : err));
+    alert(".hwpx 저장 실패: " + (err && err.message ? err.message : err));
   } finally {
-    saveBtn.innerHTML = orig;
-    saveBtn.disabled = false;
+    saveHwpxBtn.innerHTML = orig;
+    saveHwpxBtn.disabled = false;
   }
-}
+});
+
+// .hwp 저장
+saveHwpBtn.addEventListener("click", async () => {
+  if (!editor) return;
+  const orig = saveHwpBtn.innerHTML;
+  saveHwpBtn.disabled = true;
+  saveHwpBtn.innerHTML = '<span class="ico">⏳</span><span class="label">저장 중…</span>';
+  try {
+    const bytes = await editor.exportHwp();
+    downloadBytes(bytes, setBaseName() + ".hwp", "application/x-hwp");
+  } catch (err) {
+    console.error(err);
+    alert(".hwp 저장 실패: " + (err && err.message ? err.message : err));
+  } finally {
+    saveHwpBtn.innerHTML = orig;
+    saveHwpBtn.disabled = false;
+  }
+});
+
+// PDF 저장
+savePdfBtn.addEventListener("click", async () => {
+  if (!editor) return;
+  const orig = savePdfBtn.innerHTML;
+  savePdfBtn.disabled = true;
+  savePdfBtn.innerHTML = '<span class="ico">⏳</span><span class="label">변환 중…</span>';
+  try {
+    if (typeof editor.exportPdf === "function") {
+      const bytes = await editor.exportPdf();
+      downloadBytes(bytes, setBaseName() + ".pdf", "application/pdf");
+    } else {
+      alert("PDF 저장은 다음 업데이트에서 지원 예정입니다.\n\n임시로: 브라우저 [인쇄(Ctrl+P)] → [대상: PDF로 저장] 사용 가능합니다.");
+    }
+  } catch (err) {
+    console.error(err);
+    alert("PDF 저장 실패: " + (err && err.message ? err.message : err));
+  } finally {
+    savePdfBtn.innerHTML = orig;
+    savePdfBtn.disabled = false;
+  }
+});
+
+// 파일 열기 버튼 / 파일 픽커
+openBtn.addEventListener("click", () => picker.click());
+picker.addEventListener("change", (e) => {
+  if (e.target.files[0]) loadFile(e.target.files[0]);
+  e.target.value = "";
+});
+
+// 환영 화면 드래그&드롭
+dropZone.addEventListener("click", () => picker.click());
+dropZone.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" || e.key === " ") { e.preventDefault(); picker.click(); }
+});
+["dragenter","dragover"].forEach(ev => dropZone.addEventListener(ev, (e) => {
+  e.preventDefault(); dropZone.classList.add("hover");
+}));
+["dragleave","drop"].forEach(ev => dropZone.addEventListener(ev, () => dropZone.classList.remove("hover")));
+dropZone.addEventListener("drop", (e) => {
+  e.preventDefault();
+  const f = e.dataTransfer.files && e.dataTransfer.files[0];
+  if (f) loadFile(f);
+});
+
+// 페이지 어디든 드롭 받기 (편집 중에도)
+window.addEventListener("dragover", (e) => { e.preventDefault(); });
+window.addEventListener("drop", (e) => {
+  e.preventDefault();
+  const f = e.dataTransfer.files && e.dataTransfer.files[0];
+  if (f) loadFile(f);
+});
+
+// 부팅
+bootEditor();
 </script>
+
 </body>
 </html>
