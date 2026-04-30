@@ -364,37 +364,56 @@ async function bootEditor() {
       });
     };
 
-    // 안전한 loadFile: 폴링 전략 — rhwp 가 loadFile 성공 응답을 안 보내는 버그 우회.
-    //   1) loadFile 요청을 fire-and-forget 으로 보냄 (응답 무시)
-    //   2) editor.pageCount() 를 폴링 — > 0 이면 로드 완료
+    // 안전한 loadFile (rhwp loadFile 성공 응답 누락 버그 우회):
+    //   1) WASM ready 확인 (pageCount probe 가 number 반환할 때까지 대기, 최대 30초)
+    //   2) loadFile fire-and-forget
+    //   3) pageCount > 0 폴링, 30초 내 안 변하면 재발사 (최대 3회)
     window.__safeLoadFile = async (ab, name) => {
       const u8 = new Uint8Array(ab);
-      log("info", `loadFile 요청 발사 (${u8.byteLength} bytes)`);
-      const fireId = "fire-" + Date.now() + "-" + Math.random().toString(36).slice(2);
-      editor._iframe.contentWindow.postMessage({
-        type: "rhwp-request",
-        id: fireId,
-        method: "loadFile",
-        params: { data: u8, fileName: name },
-      }, "*");
+      const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
-      // 폴링: pageCount() > 0 이 될 때까지 (rhwp 가 loadFile 성공 시 응답을 안 보내므로 우회)
-      const start = performance.now();
-      const maxMs = 120000;
-      let lastCount = 0;
-      while (performance.now() - start < maxMs) {
-        await new Promise(r => setTimeout(r, 1500));
+      // 1) WASM ready 대기
+      log("info", "WASM 준비 확인 중…");
+      let wasmReady = false;
+      const wasmStart = performance.now();
+      while (performance.now() - wasmStart < 30000) {
         try {
           const r = await window.__probe("pageCount");
-          const cnt = (r.ok && typeof r.result === "number") ? r.result : 0;
-          if (cnt > 0) {
-            log("info", `로드 완료: ${cnt}페이지 (${((performance.now() - start)/1000).toFixed(1)}s)`);
-            return { pageCount: cnt };
-          }
-          lastCount = cnt;
-        } catch (_e) { /* ignore probe error and retry */ }
+          if (r.ok && typeof r.result === "number") { wasmReady = true; break; }
+        } catch (_e) {}
+        await sleep(500);
       }
-      throw new Error(`파일 로드 시간 초과 (120초). 마지막 pageCount=${lastCount}`);
+      if (!wasmReady) throw new Error("WASM 초기화 30초 내 실패");
+      await sleep(200); // 살짝 정착 대기
+
+      // 2) loadFile fire & poll, 안 되면 재발사
+      const totalStart = performance.now();
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        log("info", `loadFile 발사 시도 ${attempt}/3 (${u8.byteLength} bytes)`);
+        editor._iframe.contentWindow.postMessage({
+          type: "rhwp-request",
+          id: "fire-" + Date.now() + "-" + Math.random().toString(36).slice(2),
+          method: "loadFile",
+          params: { data: u8, fileName: name },
+        }, "*");
+
+        const attemptStart = performance.now();
+        const maxAttemptMs = 40000; // 시도당 40초
+        while (performance.now() - attemptStart < maxAttemptMs) {
+          await sleep(1500);
+          try {
+            const r = await window.__probe("pageCount");
+            const cnt = (r.ok && typeof r.result === "number") ? r.result : 0;
+            if (cnt > 0) {
+              const total = ((performance.now() - totalStart) / 1000).toFixed(1);
+              log("info", `로드 완료: ${cnt}페이지 (시도 ${attempt}, 총 ${total}s)`);
+              return { pageCount: cnt };
+            }
+          } catch (_e) {}
+        }
+        log("warn", `시도 ${attempt}: 40초 내 pageCount 변화 없음`);
+      }
+      throw new Error("loadFile 3회 시도 모두 실패 (총 120초+ 경과)");
     };
 
     window.__loadFileFromBuffer = async (buf, name) => {
