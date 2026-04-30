@@ -295,19 +295,21 @@ async function bootEditor() {
     log("info", "createEditor 완료, _request 패치 진행");
     patchEditorTimeouts(editor);
 
-    // 디버그: iframe→outer 모든 메시지 로깅
+    // 디버그: 모든 message 이벤트 무필터 로깅 (source 체크 없음)
     window.addEventListener("message", (e) => {
-      if (e.source !== editor._iframe.contentWindow) return;
       const d = e.data;
       if (!d) return;
+      const isFromIframe = e.source === editor._iframe.contentWindow;
       const summary = {
-        type: d.type,
-        id: d.id,
-        idType: typeof d.id,
-        hasResult: "result" in d,
-        hasError: "error" in d,
+        type: d?.type,
+        id: d?.id,
+        idType: typeof d?.id,
+        hasResult: d ? "result" in d : false,
+        hasError: d ? "error" in d : false,
+        srcFromIframe: isFromIframe,
+        origin: e.origin,
       };
-      log("debug", "iframe→us: " + JSON.stringify(summary));
+      log("debug", "msg: " + JSON.stringify(summary));
     });
 
     editorReady = true;
