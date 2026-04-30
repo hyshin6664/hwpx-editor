@@ -165,11 +165,6 @@
   <a href="https://github.com/hyshin6664/hwpx-editor" target="_blank" rel="noopener">GitHub</a>
 </div>
 
-<!-- Tabs (visual) -->
-<div class="tabs">
-  <div class="tab active">편집</div>
-  <div class="tab">보기</div>
-</div>
 
 <!-- Toolbar -->
 <div class="toolbar">
@@ -429,14 +424,33 @@ function walkAndRender(node, container, insideTable) {
     const lname = child.localName;
 
     if (lname === "p") {
+      // HWPX에서 표(hp:tbl)는 보통 p > run > ctrl > tbl 처럼 문단 안에 박혀있음.
+      // 1) 문단 내부의 직속(중첩 p/tbl 밖) tbl 들을 모두 찾아 렌더
+      // 2) 문단 자체의 텍스트(있으면)도 렌더 — 표 캡션/설명 등
+      const innerTbls = findDirectDescendantTables(child);
+      // 텍스트가 있거나 표 셀 내부면 paragraph도 렌더
       renderParagraph(child, container, insideTable);
+      for (const tbl of innerTbls) renderTable(tbl, container);
     } else if (lname === "tbl") {
       renderTable(child, container);
     } else {
-      // section, list, sublist 등 — 자식들 재귀
       walkAndRender(child, container, insideTable);
     }
   }
+}
+
+function findDirectDescendantTables(p) {
+  // p 후손 중 tbl 들 가져오되, 중첩된 p 또는 tbl 안에 들어있는 것은 제외
+  const all = Array.from(p.getElementsByTagNameNS("*", "tbl")).filter(e => e.localName === "tbl");
+  return all.filter(tbl => {
+    let n = tbl.parentNode;
+    while (n) {
+      if (n === p) return true;
+      if (n.localName === "p" || n.localName === "tbl") return false;
+      n = n.parentNode;
+    }
+    return false;
+  });
 }
 
 function collectDirectTextNodes(p) {
