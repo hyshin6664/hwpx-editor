@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>한글 간단 편집기 (HWPX)</title>
+<meta name="description" content="브라우저 안에서 .hwpx 파일을 열고 문구만 간단히 수정해서 다시 받는 무료 편집기. 서버 업로드 없음.">
+<style>
+  *,*::before,*::after { box-sizing: border-box; }
+  html,body { margin:0; padding:0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", "맑은 고딕", system-ui, sans-serif;
+    color: #1f2937;
+    background: #f8fafc;
+    line-height: 1.55;
+    min-height: 100vh;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 28px 18px 80px; }
+  header h1 { font-size: 22px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  header .sub { color: #6b7280; font-size: 14px; margin: 0; }
+  header .badge {
+    display: inline-block; font-size: 12px; padding: 2px 8px; border-radius: 999px;
+    background: #ecfdf5; color: #047857; margin-left: 6px; vertical-align: middle;
+  }
+
+  #drop {
+    margin-top: 22px;
+    border: 2px dashed #cbd5e1;
+    border-radius: 14px;
+    background: #fff;
+    padding: 48px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+  }
+  #drop:hover, #drop.hover { border-color: #2563eb; background: #eff6ff; }
+  #drop .ico { font-size: 36px; line-height: 1; margin-bottom: 10px; }
+  #drop p { margin: 6px 0; color: #475569; font-size: 14px; }
+  #drop .main { font-size: 16px; color: #111827; font-weight: 600; }
+  #picker { display: none; }
+
+  .notice {
+    margin-top: 14px; font-size: 13px; color: #64748b;
+    background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 14px;
+  }
+  .notice b { color: #1f2937; }
+  .notice ul { margin: 6px 0 0; padding-left: 18px; }
+
+  #editor { margin-top: 18px; }
+  .bar {
+    display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+    background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px 14px;
+    position: sticky; top: 0; z-index: 10;
+    box-shadow: 0 1px 3px rgba(0,0,0,.04);
+  }
+  .bar .name { font-weight: 600; color: #111827; min-width: 0; word-break: break-all; flex: 1; font-size: 14px; }
+  .bar .meta { color: #6b7280; font-size: 12px; }
+  button {
+    font-family: inherit; font-size: 14px;
+    border: 1px solid #2563eb; background: #2563eb; color: #fff;
+    padding: 8px 14px; border-radius: 8px; cursor: pointer;
+    transition: background .12s, border-color .12s;
+  }
+  button:hover { background: #1d4ed8; border-color: #1d4ed8; }
+  button.ghost { background: #fff; color: #1f2937; border-color: #cbd5e1; }
+  button.ghost:hover { background: #f1f5f9; border-color: #94a3b8; }
+
+  #paragraphs { margin-top: 14px; display: flex; flex-direction: column; gap: 10px; }
+  .p-card {
+    background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
+    padding: 12px 14px;
+  }
+  .p-label { font-size: 12px; color: #64748b; margin-bottom: 8px; }
+  .p-card.modified { border-color: #fbbf24; background: #fffbeb; }
+  .t-row { margin-bottom: 6px; }
+  .t-row:last-child { margin-bottom: 0; }
+  textarea {
+    width: 100%; resize: none; overflow: hidden;
+    font-family: inherit; font-size: 15px; line-height: 1.5;
+    padding: 8px 10px;
+    border: 1px solid #e2e8f0; border-radius: 8px;
+    background: #fafafa; color: #111827;
+    transition: border-color .12s, background .12s;
+  }
+  textarea:focus { outline: none; border-color: #2563eb; background: #fff; }
+  textarea.changed { background: #fffbeb; border-color: #fbbf24; }
+
+  .empty { color: #9ca3af; text-align: center; padding: 40px 0; }
+
+  footer { margin-top: 40px; color: #94a3b8; font-size: 12px; text-align: center; }
+  footer a { color: #64748b; }
+
+  @media (max-width: 480px) {
+    .wrap { padding: 18px 12px 60px; }
+    #drop { padding: 32px 14px; }
+    .bar { padding: 10px; }
+    button { padding: 7px 11px; font-size: 13px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>한글 간단 편집기 <span class="badge">.hwpx</span></h1>
+    <p class="sub">파일은 <b>여러분의 브라우저 안</b>에서만 처리됩니다. 서버에 올라가지 않고 저장도 되지 않습니다.</p>
+  </header>
+
+  <section id="drop" tabindex="0" role="button" aria-label="HWPX 파일 선택">
+    <div class="ico">📄</div>
+    <p class="main">.hwpx 파일을 여기에 끌어다 놓거나 클릭해서 선택하세요</p>
+    <p>맥 · 윈도우 · 안드로이드 · 아이폰 모두 동작합니다</p>
+    <input type="file" id="picker" accept=".hwpx">
+  </section>
+
+  <div class="notice">
+    <b>이런 작업에 쓰세요</b>
+    <ul>
+      <li>이름 · 날짜 · 금액 같은 문구만 살짝 바꾸기</li>
+      <li>오타 수정</li>
+      <li>여러 명에게 보낼 같은 양식의 문서를 사람마다 조금씩 다르게 만들기</li>
+    </ul>
+    <b style="display:block;margin-top:10px;">한계</b>
+    <ul>
+      <li>표 · 이미지 · 서식 편집은 안 됩니다 (텍스트 문구만)</li>
+      <li>구형 <code>.hwp</code> 파일은 한컴오피스에서 "다른 이름으로 저장 → HWPX(*.hwpx)"로 변환 후 사용</li>
+    </ul>
+  </div>
+
+  <section id="editor" hidden>
+    <div class="bar">
+      <span class="name" id="filename"></span>
+      <span class="meta" id="meta"></span>
+      <button id="save">수정한 .hwpx 다운로드</button>
+      <button id="reset" class="ghost">다른 파일</button>
+    </div>
+    <div id="paragraphs"></div>
+  </section>
+
+  <footer>
+    <p>오픈소스 · 100% 클라이언트 처리 · 광고 없음 · 추적 없음</p>
+    <p><a href="https://github.com/hyshin6664/hwpx-editor" target="_blank" rel="noopener">GitHub에서 소스 보기</a></p>
+  </footer>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script>
+"use strict";
+
+const $ = (id) => document.getElementById(id);
+const dropEl = $("drop");
+const pickerEl = $("picker");
+const editorEl = $("editor");
+const paragraphsEl = $("paragraphs");
+const filenameEl = $("filename");
+const metaEl = $("meta");
+const saveBtn = $("save");
+const resetBtn = $("reset");
+
+let state = null;
+// state = { zip, filename, sections: [{name, doc, originalXml}], modifiedCount }
+
+dropEl.addEventListener("click", () => pickerEl.click());
+dropEl.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pickerEl.click(); }
+});
+pickerEl.addEventListener("change", (e) => {
+  if (e.target.files[0]) loadFile(e.target.files[0]);
+});
+dropEl.addEventListener("dragover", (e) => { e.preventDefault(); dropEl.classList.add("hover"); });
+dropEl.addEventListener("dragleave", () => dropEl.classList.remove("hover"));
+dropEl.addEventListener("drop", (e) => {
+  e.preventDefault();
+  dropEl.classList.remove("hover");
+  const f = e.dataTransfer.files && e.dataTransfer.files[0];
+  if (f) loadFile(f);
+});
+
+resetBtn.addEventListener("click", () => {
+  if (state && state.modifiedCount > 0 &&
+      !confirm("수정한 내용이 다운로드되지 않았습니다. 정말 다른 파일을 여시겠어요?")) return;
+  state = null;
+  pickerEl.value = "";
+  paragraphsEl.innerHTML = "";
+  editorEl.hidden = true;
+  dropEl.hidden = false;
+});
+
+saveBtn.addEventListener("click", saveFile);
+
+window.addEventListener("beforeunload", (e) => {
+  if (state && state.modifiedCount > 0) {
+    e.preventDefault();
+    e.returnValue = "";
+  }
+});
+
+async function loadFile(file) {
+  const lower = file.name.toLowerCase();
+  if (lower.endsWith(".hwp") && !lower.endsWith(".hwpx")) {
+    alert("구형 .hwp 파일은 지원하지 않습니다.\n\n한컴오피스에서 파일 → 다른 이름으로 저장 → 파일 형식 'HWPX(*.hwpx)' 선택 후 다시 시도해주세요.");
+    return;
+  }
+  if (!lower.endsWith(".hwpx")) {
+    alert(".hwpx 파일만 지원합니다.");
+    return;
+  }
+
+  try {
+    const zip = await JSZip.loadAsync(file);
+    const sectionNames = Object.keys(zip.files)
+      .filter((n) => /^Contents\/section\d+\.xml$/i.test(n))
+      .sort();
+
+    if (sectionNames.length === 0) {
+      throw new Error("Contents/section*.xml 을 찾지 못했습니다. HWPX 파일이 맞는지 확인해주세요.");
+    }
+
+    const sections = [];
+    for (const name of sectionNames) {
+      const xmlText = await zip.file(name).async("string");
+      const doc = new DOMParser().parseFromString(xmlText, "application/xml");
+      if (doc.getElementsByTagName("parsererror").length) {
+        throw new Error(name + " XML 파싱 오류");
+      }
+      sections.push({ name, doc, originalXml: xmlText });
+    }
+
+    state = { zip, filename: file.name, sections, modifiedCount: 0 };
+    render();
+  } catch (err) {
+    console.error(err);
+    alert("파일 열기 실패: " + (err && err.message ? err.message : err));
+  }
+}
+
+function render() {
+  filenameEl.textContent = state.filename;
+  paragraphsEl.innerHTML = "";
+
+  let pCount = 0;
+  let tCount = 0;
+
+  for (const sec of state.sections) {
+    const tElems = Array.from(sec.doc.getElementsByTagNameNS("*", "t"))
+      .filter((el) => el.localName === "t");
+
+    const pBuckets = new Map();
+    for (const t of tElems) {
+      let p = t.parentNode;
+      while (p && p.localName !== "p") p = p.parentNode;
+      if (!p) continue;
+      if (!pBuckets.has(p)) pBuckets.set(p, []);
+      pBuckets.get(p).push(t);
+    }
+
+    for (const [, tList] of pBuckets) {
+      const visible = tList.filter((t) => (t.textContent || "").length > 0);
+      if (visible.length === 0) continue;
+
+      pCount++;
+      const card = document.createElement("div");
+      card.className = "p-card";
+
+      const label = document.createElement("div");
+      label.className = "p-label";
+      label.textContent = "문단 " + pCount;
+      card.appendChild(label);
+
+      for (const t of visible) {
+        const row = document.createElement("div");
+        row.className = "t-row";
+        const ta = document.createElement("textarea");
+        ta.value = t.textContent;
+        ta.rows = 1;
+        ta.dataset.original = t.textContent;
+        ta.addEventListener("input", () => {
+          t.textContent = ta.value;
+          const wasChanged = ta.classList.contains("changed");
+          const isChanged = ta.value !== ta.dataset.original;
+          if (isChanged !== wasChanged) {
+            ta.classList.toggle("changed", isChanged);
+            card.classList.toggle("modified", cardHasChange(card));
+            state.modifiedCount += isChanged ? 1 : -1;
+            updateMeta();
+          }
+          autosize(ta);
+        });
+        row.appendChild(ta);
+        card.appendChild(row);
+        tCount++;
+      }
+
+      paragraphsEl.appendChild(card);
+      // Auto-size after appending so scrollHeight is correct
+      card.querySelectorAll("textarea").forEach(autosize);
+    }
+  }
+
+  if (tCount === 0) {
+    paragraphsEl.innerHTML = '<p class="empty">편집 가능한 텍스트가 없습니다.</p>';
+  }
+
+  updateMeta();
+  dropEl.hidden = true;
+  editorEl.hidden = false;
+}
+
+function cardHasChange(card) {
+  return Array.from(card.querySelectorAll("textarea")).some((t) => t.classList.contains("changed"));
+}
+
+function updateMeta() {
+  if (!state) return;
+  const total = paragraphsEl.querySelectorAll("textarea").length;
+  metaEl.textContent = "텍스트 " + total + "개" + (state.modifiedCount > 0 ? " · 수정 " + state.modifiedCount + "곳" : "");
+}
+
+function autosize(el) {
+  el.style.height = "auto";
+  el.style.height = (el.scrollHeight + 2) + "px";
+}
+
+async function saveFile() {
+  if (!state) return;
+  saveBtn.disabled = true;
+  const originalLabel = saveBtn.textContent;
+  saveBtn.textContent = "저장 중…";
+
+  try {
+    const serializer = new XMLSerializer();
+    for (const sec of state.sections) {
+      let xml = serializer.serializeToString(sec.doc);
+      if (!xml.startsWith("<?xml")) {
+        xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' + xml;
+      }
+      state.zip.file(sec.name, xml);
+    }
+
+    // Re-add mimetype with STORE compression (HWPX/OWPML spec).
+    // Read raw bytes to avoid altering BOM / trailing whitespace.
+    const mimeFile = state.zip.file("mimetype");
+    if (mimeFile) {
+      const mimeBytes = await mimeFile.async("uint8array");
+      state.zip.file("mimetype", mimeBytes, { compression: "STORE" });
+    }
+
+    const blob = await state.zip.generateAsync({
+      type: "blob",
+      mimeType: "application/hwp+zip",
+      compression: "DEFLATE",
+      compressionOptions: { level: 6 },
+    });
+
+    const stamp = new Date().toISOString().slice(0, 16).replace("T", "_").replace(/:/g, "-");
+    const baseName = state.filename.replace(/\.hwpx$/i, "");
+    const outName = baseName + "_수정_" + stamp + ".hwpx";
+
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = outName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+
+    // Reset modified counter (treat current state as the new "original")
+    paragraphsEl.querySelectorAll("textarea").forEach((ta) => {
+      ta.dataset.original = ta.value;
+      ta.classList.remove("changed");
+    });
+    paragraphsEl.querySelectorAll(".p-card").forEach((c) => c.classList.remove("modified"));
+    state.modifiedCount = 0;
+    updateMeta();
+  } catch (err) {
+    console.error(err);
+    alert("저장 실패: " + (err && err.message ? err.message : err));
+  } finally {
+    saveBtn.disabled = false;
+    saveBtn.textContent = originalLabel;
+  }
+}
+</script>
+</body>
+</html>
