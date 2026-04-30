@@ -134,6 +134,15 @@
 
   .doc-empty { color:#9ca3af; text-align:center; padding:60px 0; font-size:14px; }
 
+  /* Status overlay */
+  .status-overlay { position:fixed; inset:0; background:rgba(15,23,42,0.55); display:flex; align-items:center; justify-content:center; z-index:100; backdrop-filter: blur(2px); }
+  .status-overlay.hidden { display:none; }
+  .status-card { background:#fff; border-radius:14px; padding:28px 36px; box-shadow:0 12px 40px rgba(0,0,0,.25); text-align:center; min-width:280px; max-width:90vw; }
+  .status-card .spinner { width:36px; height:36px; border:3px solid #e5e7eb; border-top-color:#2563eb; border-radius:50%; margin:0 auto 14px; animation:spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .status-card .text { color:#111827; font-size:15px; font-weight:600; }
+  .status-card .sub { color:#6b7280; font-size:12px; margin-top:6px; }
+
   footer { padding:14px; text-align:center; color:#9ca3af; font-size:11px; border-top:1px solid #e5e7eb; background:#fafafa; }
   footer a { color:#6b7280; }
 
@@ -217,7 +226,7 @@
       <ul>
         <li>이미지 · 그림은 표시되지 않습니다 (저장 시 그대로 보존됩니다)</li>
         <li>한 문단 안에서 일부분만 다른 서식(굵게/색상)이 있는 경우, 해당 문단을 수정하면 인라인 서식은 통일됩니다</li>
-        <li>구형 <code>.hwp</code> 파일은 아직 지원하지 않습니다 — <a href="https://www.hancomspace.com" target="_blank" rel="noopener">한컴스페이스(무료)</a>에서 .hwpx로 변환 후 사용해주세요</li>
+        <li><b>구형 <code>.hwp</code> 파일</b>도 받습니다 — 자동으로 <code>.hwpx</code> 로 변환되어 편집 가능합니다 (실험적, 변환 실패 시 <a href="https://www.hancomspace.com" target="_blank" rel="noopener">한컴스페이스</a> 권장)</li>
       </ul>
     </div>
   </div>
@@ -235,6 +244,15 @@
   오픈소스 · 100% 클라이언트 처리 · 광고 없음 · 추적 없음 ·
   <a href="https://github.com/hyshin6664/hwpx-editor" target="_blank" rel="noopener">GitHub</a>
 </footer>
+
+<!-- Loading overlay -->
+<div class="status-overlay hidden" id="statusOverlay">
+  <div class="status-card">
+    <div class="spinner"></div>
+    <div class="text" id="statusText">처리 중…</div>
+    <div class="sub" id="statusSub"></div>
+  </div>
+</div>
 
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <script>
@@ -307,19 +325,81 @@ window.addEventListener("beforeunload", (e) => {
   if (state && state.modifiedCount > 0) { e.preventDefault(); e.returnValue = ""; }
 });
 
+// ── Status overlay ─────────────────────────────────────────────────────────
+const statusOverlay = $("statusOverlay");
+const statusText = $("statusText");
+const statusSub = $("statusSub");
+function showStatus(text, sub) {
+  statusText.textContent = text || "처리 중…";
+  statusSub.textContent = sub || "";
+  statusOverlay.classList.remove("hidden");
+}
+function hideStatus() { statusOverlay.classList.add("hidden"); }
+
+// ── hwp.js (lazy loaded) ───────────────────────────────────────────────────
+let _hwpxjsPromise = null;
+function loadHwpxJs() {
+  if (!_hwpxjsPromise) {
+    _hwpxjsPromise = import(
+      "https://cdn.jsdelivr.net/npm/@ssabrojs/hwpxjs/dist/browser/hwpxjs.browser.mjs"
+    );
+  }
+  return _hwpxjsPromise;
+}
+
 // ── File load ──────────────────────────────────────────────────────────────
 async function loadFile(file) {
   const lower = file.name.toLowerCase();
+
+  // 구형 .hwp → 자동으로 .hwpx 변환
   if (lower.endsWith(".hwp") && !lower.endsWith(".hwpx")) {
-    alert("구형 .hwp 파일은 아직 지원하지 않습니다.\n\n한컴스페이스(무료) 또는 한컴오피스에서 .hwpx로 저장 후 다시 시도해주세요.\n👉 https://www.hancomspace.com");
-    return;
+    try {
+      showStatus("구형 .hwp 파일을 .hwpx 로 변환 중…", "처음에는 라이브러리 다운로드로 5~10초 걸릴 수 있어요");
+      const mod = await loadHwpxJs();
+      const hwpToHwpx = mod.hwpToHwpx || (mod.default && mod.default.hwpToHwpx);
+      if (typeof hwpToHwpx !== "function") throw new Error("변환 함수(hwpToHwpx)를 찾지 못했습니다.");
+
+      showStatus("HWP 본문 파싱 중…", file.name);
+      const inBytes = new Uint8Array(await file.arrayBuffer());
+
+      showStatus("HWPX 패키징 중…", "표·이미지·서식 보존 시도");
+      const outBytes = await hwpToHwpx(inBytes, {
+        title: file.name.replace(/\.hwp$/i, ""),
+        creator: "hwpx-editor",
+      });
+
+      // 변환된 .hwpx 자동 다운로드 (사용자가 보관할 수 있게)
+      const newName = file.name.replace(/\.hwp$/i, ".hwpx");
+      const dlBlob = new Blob([outBytes], { type: "application/hwp+zip" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(dlBlob);
+      a.download = newName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+
+      // 변환된 .hwpx 를 그대로 편집기에 로드
+      const newFile = new File([outBytes], newName, { type: "application/hwp+zip" });
+      hideStatus();
+      return await loadFile(newFile);
+    } catch (err) {
+      hideStatus();
+      console.error(err);
+      alert("구형 .hwp 자동변환 실패\n\n" +
+        (err && err.message ? "사유: " + err.message + "\n\n" : "") +
+        "한컴스페이스(무료)에서 .hwpx 로 저장 후 다시 시도해주세요.\n👉 https://www.hancomspace.com");
+      return;
+    }
   }
+
   if (!lower.endsWith(".hwpx")) {
-    alert(".hwpx 파일만 지원합니다.");
+    alert(".hwpx 또는 .hwp 파일만 지원합니다.");
     return;
   }
 
   try {
+    showStatus("HWPX 파일 여는 중…", file.name);
     const zip = await JSZip.loadAsync(file);
 
     // 1) 헤더 읽어서 스타일 맵 만들기 (있으면)
@@ -349,7 +429,9 @@ async function loadFile(file) {
 
     state = { zip, filename: file.name, sections, styles, paragraphs: [], modifiedCount: 0, paraCounter: 0 };
     render();
+    hideStatus();
   } catch (err) {
+    hideStatus();
     console.error(err);
     alert("파일 열기 실패: " + (err && err.message ? err.message : err));
   }
