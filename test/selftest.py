@@ -13,7 +13,8 @@ except Exception:
     pass
 
 LIVE_URL = "https://hyshin6664.github.io/hwpx-editor/"
-TEST_FILE = Path(r"C:\Users\신현식\Desktop\★[최종양식] 2026년 오픈소스 AI·SW 개발·활용 지원사업_수정-v.1_수정_2026-04-30_09-01_수정_2026-04-30_09-21_수정_2026-04-30_09-36.hwpx")
+DEFAULT_FILE = Path(r"C:\Users\신현식\Desktop\★[최종양식] 2026년 오픈소스 AI·SW 개발·활용 지원사업_수정-v.1_수정_2026-04-30_09-01_수정_2026-04-30_09-21_수정_2026-04-30_09-36.hwpx")
+TEST_FILE = Path(os.environ.get("TEST_FILE", str(DEFAULT_FILE)))
 OUT_DIR = Path(__file__).parent / "out"
 OUT_DIR.mkdir(exist_ok=True)
 

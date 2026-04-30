@@ -565,7 +565,7 @@ savePdfBtn.addEventListener("click", async () => {
       '@media print { body { background:#fff; padding:0; } .page { box-shadow:none; margin:0; } }',
       '</style></head><body>',
       ...svgs.map(s => `<div class="page">${s}</div>`),
-      '<script>window.addEventListener("load",()=>setTimeout(()=>window.print(),300));</script>',
+      '<scr' + 'ipt>window.addEventListener("load",function(){setTimeout(function(){window.print();},300);});</scr' + 'ipt>',
       "</body></html>",
     ].join("");
 
