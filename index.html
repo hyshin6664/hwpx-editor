@@ -320,6 +320,26 @@ async function bootEditor() {
     // 자체 테스트용 globals
     window.__editor = editor;
 
+    // Diagnostic probe: 작은 요청에 응답 오는지 확인
+    window.__probe = async (method, params) => {
+      const id = "probe-" + Date.now();
+      return new Promise((resolve, reject) => {
+        const handler = (e) => {
+          if (e.data?.type !== "rhwp-response" || e.data.id !== id) return;
+          window.removeEventListener("message", handler);
+          resolve({ ok: !e.data.error, result: e.data.result, error: e.data.error });
+        };
+        window.addEventListener("message", handler);
+        editor._iframe.contentWindow.postMessage(
+          { type: "rhwp-request", id, method, params: params || {} }, "*"
+        );
+        setTimeout(() => {
+          window.removeEventListener("message", handler);
+          resolve({ ok: false, error: "probe timeout 5s" });
+        }, 5000);
+      });
+    };
+
     // 직접 postMessage. rhwp 의 'hwpctl-load' 프로토콜 사용 (rhwp-request 핸들러의 변수 shadowing 회피).
     // editor._request 와 그 10초 timeout 도 우회.
     window.__directLoadFile = (buf, name) => {

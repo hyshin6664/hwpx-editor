@@ -57,11 +57,19 @@ def main():
 
             p("[3] Wait window.__editor + __loadFileFromBuffer (90s)...")
             page.wait_for_function(
-                "() => (typeof window.__editor === 'object') && (typeof window.__loadFileFromBuffer === 'function')",
+                "() => (typeof window.__editor === 'object') && (typeof window.__loadFileFromBuffer === 'function') && (typeof window.__probe === 'function')",
                 timeout=90000,
             )
             p("    OK editor ready")
             page.screenshot(path=str(OUT_DIR / "01_ready.png"))
+
+            p("[3a] PROBE: pageCount before loadFile...")
+            probe_before = page.evaluate("() => window.__probe('pageCount')")
+            p(f"    probe_before: {probe_before}")
+
+            p("[3b] PROBE: ready before loadFile...")
+            probe_ready = page.evaluate("() => window.__probe('ready')")
+            p(f"    probe_ready: {probe_ready}")
 
             p("[4] Inject 7MB file via __loadFileFromBuffer...")
             t0 = time.time()
@@ -87,6 +95,10 @@ def main():
                 page.screenshot(path=str(OUT_DIR / "02_after_load.png"), full_page=True)
             except Exception as ex:
                 p(f"    screenshot fail: {ex}")
+
+            p("[5a] PROBE after loadFile: pageCount...")
+            probe_after = page.evaluate("() => window.__probe('pageCount')")
+            p(f"    probe_after: {probe_after}")
 
             if not result.get("ok"):
                 p(f"\nFAIL: load failed - {result.get('error')}")
