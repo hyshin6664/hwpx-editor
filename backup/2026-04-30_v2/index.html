@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>한글 간단 편집기 (HWPX)</title>
+<meta name="description" content="브라우저 안에서 .hwpx 파일을 열고 문구만 간단히 수정해서 다시 받는 무료 편집기. 서버 업로드 없음.">
+<style>
+  *,*::before,*::after { box-sizing: border-box; }
+  html,body { margin:0; padding:0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", "맑은 고딕", system-ui, sans-serif;
+    color: #1f2937;
+    background: #f8fafc;
+    line-height: 1.55;
+    min-height: 100vh;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 28px 18px 80px; }
+  header h1 { font-size: 22px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  header .sub { color: #6b7280; font-size: 14px; margin: 0; }
+  header .badge {
+    display: inline-block; font-size: 12px; padding: 2px 8px; border-radius: 999px;
+    background: #ecfdf5; color: #047857; margin-left: 6px; vertical-align: middle;
+  }
+
+  #drop {
+    margin-top: 22px;
+    border: 2px dashed #cbd5e1;
+    border-radius: 14px;
+    background: #fff;
+    padding: 48px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+  }
+  #drop:hover, #drop.hover { border-color: #2563eb; background: #eff6ff; }
+  #drop .ico { font-size: 36px; line-height: 1; margin-bottom: 10px; }
+  #drop p { margin: 6px 0; color: #475569; font-size: 14px; }
+  #drop .main { font-size: 16px; color: #111827; font-weight: 600; }
+  #picker { display: none; }
+
+  .notice {
+    margin-top: 14px; font-size: 13px; color: #64748b;
+    background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 14px;
+  }
+  .notice b { color: #1f2937; }
+  .notice ul { margin: 6px 0 0; padding-left: 18px; }
+  .notice a { color: #2563eb; }
+
+  #editor { margin-top: 18px; }
+  .bar {
+    display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+    background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px 14px;
+    position: sticky; top: 0; z-index: 10;
+    box-shadow: 0 1px 3px rgba(0,0,0,.04);
+  }
+  .bar .name { font-weight: 600; color: #111827; min-width: 0; word-break: break-all; flex: 1; font-size: 14px; }
+  .bar .meta { color: #6b7280; font-size: 12px; }
+  button {
+    font-family: inherit; font-size: 14px;
+    border: 1px solid #2563eb; background: #2563eb; color: #fff;
+    padding: 8px 14px; border-radius: 8px; cursor: pointer;
+    transition: background .12s, border-color .12s;
+  }
+  button:hover { background: #1d4ed8; border-color: #1d4ed8; }
+  button.ghost { background: #fff; color: #1f2937; border-color: #cbd5e1; }
+  button.ghost:hover { background: #f1f5f9; border-color: #94a3b8; }
+
+  .find-bar {
+    background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
+    padding: 10px 12px; margin-top: 10px;
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  }
+  .find-bar input {
+    flex: 1 1 180px; min-width: 0;
+    font: inherit; padding: 7px 10px;
+    border: 1px solid #e2e8f0; border-radius: 8px; background: #fafafa;
+  }
+  .find-bar input:focus { outline: none; border-color: #2563eb; background: #fff; }
+  .find-bar .arrow { color: #94a3b8; font-size: 14px; }
+
+  #paragraphs { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+  .p-card {
+    background: #fff; border: 1px solid #e2e8f0; border-radius: 10px;
+    padding: 10px 12px;
+    transition: border-color .12s, background .12s;
+  }
+  .p-card.modified { border-color: #fbbf24; background: #fffbeb; }
+  .p-label { font-size: 11px; color: #94a3b8; margin-bottom: 4px; user-select: none; }
+  textarea {
+    width: 100%; resize: none; overflow: hidden;
+    display: block;
+    font-family: inherit; font-size: 15px; line-height: 1.55;
+    padding: 8px 10px;
+    border: 1px solid #e2e8f0; border-radius: 8px;
+    background: #fafafa; color: #111827;
+    transition: border-color .12s, background .12s;
+  }
+  textarea:focus { outline: none; border-color: #2563eb; background: #fff; }
+  textarea.changed { background: #fffbeb; border-color: #fbbf24; }
+
+  .empty { color: #9ca3af; text-align: center; padding: 40px 0; }
+
+  footer { margin-top: 40px; color: #94a3b8; font-size: 12px; text-align: center; }
+  footer a { color: #64748b; }
+
+  @media (max-width: 480px) {
+    .wrap { padding: 18px 12px 60px; }
+    #drop { padding: 32px 14px; }
+    .bar { padding: 10px; }
+    button { padding: 7px 11px; font-size: 13px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>한글 간단 편집기 <span class="badge">.hwpx</span></h1>
+    <p class="sub">파일은 <b>여러분의 브라우저 안</b>에서만 처리됩니다. 서버에 올라가지 않고 저장도 되지 않습니다.</p>
+  </header>
+
+  <section id="drop" tabindex="0" role="button" aria-label="HWPX 파일 선택">
+    <div class="ico">📄</div>
+    <p class="main">.hwpx 파일을 여기에 끌어다 놓거나 클릭해서 선택하세요</p>
+    <p>맥 · 윈도우 · 안드로이드 · 아이폰 모두 동작합니다</p>
+    <input type="file" id="picker" accept=".hwpx">
+  </section>
+
+  <div class="notice">
+    <b>이런 작업에 쓰세요</b>
+    <ul>
+      <li>이름 · 날짜 · 금액 같은 문구만 살짝 바꾸기</li>
+      <li>오타 수정</li>
+      <li>여러 명에게 보낼 같은 양식의 문서를 사람마다 조금씩 다르게 만들기</li>
+    </ul>
+    <b style="display:block;margin-top:10px;">한계</b>
+    <ul>
+      <li>표 · 이미지 · 그림 같은 비텍스트 요소는 편집되지 않습니다 (그대로 보존됩니다)</li>
+      <li>구형 <code>.hwp</code> 파일은 지원하지 않습니다 — <a href="https://www.hancomspace.com" target="_blank" rel="noopener">한컴스페이스(무료)</a>에서 .hwpx로 변환 후 사용해주세요</li>
+    </ul>
+  </div>
+
+  <section id="editor" hidden>
+    <div class="bar">
+      <span class="name" id="filename"></span>
+      <span class="meta" id="meta"></span>
+      <button id="save">수정한 .hwpx 다운로드</button>
+      <button id="reset" class="ghost">다른 파일</button>
+    </div>
+
+    <div class="find-bar">
+      <input id="findInput" type="text" placeholder="찾을 문구">
+      <span class="arrow">→</span>
+      <input id="replaceInput" type="text" placeholder="바꿀 문구">
+      <button id="replaceAll" class="ghost">모두 바꾸기</button>
+    </div>
+
+    <div id="paragraphs"></div>
+  </section>
+
+  <footer>
+    <p>오픈소스 · 100% 클라이언트 처리 · 광고 없음 · 추적 없음</p>
+    <p><a href="https://github.com/hyshin6664/hwpx-editor" target="_blank" rel="noopener">GitHub에서 소스 보기</a></p>
+  </footer>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script>
+"use strict";
+
+const $ = (id) => document.getElementById(id);
+const dropEl = $("drop");
+const pickerEl = $("picker");
+const editorEl = $("editor");
+const paragraphsEl = $("paragraphs");
+const filenameEl = $("filename");
+const metaEl = $("meta");
+const saveBtn = $("save");
+const resetBtn = $("reset");
+const findInput = $("findInput");
+const replaceInput = $("replaceInput");
+const replaceAllBtn = $("replaceAll");
+
+let state = null;
+// state = {
+//   zip, filename,
+//   sections: [{ name, doc }],
+//   paragraphs: [{ pEl, tList, originalText, ta, card }],
+//   modifiedCount
+// }
+
+dropEl.addEventListener("click", () => pickerEl.click());
+dropEl.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pickerEl.click(); }
+});
+pickerEl.addEventListener("change", (e) => {
+  if (e.target.files[0]) loadFile(e.target.files[0]);
+});
+dropEl.addEventListener("dragover", (e) => { e.preventDefault(); dropEl.classList.add("hover"); });
+dropEl.addEventListener("dragleave", () => dropEl.classList.remove("hover"));
+dropEl.addEventListener("drop", (e) => {
+  e.preventDefault();
+  dropEl.classList.remove("hover");
+  const f = e.dataTransfer.files && e.dataTransfer.files[0];
+  if (f) loadFile(f);
+});
+
+resetBtn.addEventListener("click", () => {
+  if (state && state.modifiedCount > 0 &&
+      !confirm("수정한 내용이 다운로드되지 않았습니다. 정말 다른 파일을 여시겠어요?")) return;
+  resetState();
+});
+
+saveBtn.addEventListener("click", saveFile);
+replaceAllBtn.addEventListener("click", runReplaceAll);
+findInput.addEventListener("keydown", (e) => { if (e.key === "Enter") runReplaceAll(); });
+replaceInput.addEventListener("keydown", (e) => { if (e.key === "Enter") runReplaceAll(); });
+
+window.addEventListener("beforeunload", (e) => {
+  if (state && state.modifiedCount > 0) {
+    e.preventDefault();
+    e.returnValue = "";
+  }
+});
+
+function resetState() {
+  state = null;
+  pickerEl.value = "";
+  paragraphsEl.innerHTML = "";
+  findInput.value = "";
+  replaceInput.value = "";
+  editorEl.hidden = true;
+  dropEl.hidden = false;
+}
+
+async function loadFile(file) {
+  const lower = file.name.toLowerCase();
+  if (lower.endsWith(".hwp") && !lower.endsWith(".hwpx")) {
+    alert("구형 .hwp 파일은 직접 편집할 수 없습니다.\n\n" +
+      "1) 한컴오피스에서 '다른 이름으로 저장' → 파일 형식 'HWPX(*.hwpx)' 선택\n" +
+      "또는\n" +
+      "2) 한컴스페이스(무료)에서 .hwpx로 저장 — https://www.hancomspace.com\n\n" +
+      "변환 후 다시 시도해주세요.");
+    return;
+  }
+  if (!lower.endsWith(".hwpx")) {
+    alert(".hwpx 파일만 지원합니다.");
+    return;
+  }
+
+  try {
+    const zip = await JSZip.loadAsync(file);
+    const sectionNames = Object.keys(zip.files)
+      .filter((n) => /^Contents\/section\d+\.xml$/i.test(n))
+      .sort();
+
+    if (sectionNames.length === 0) {
+      throw new Error("Contents/section*.xml 을 찾지 못했습니다. HWPX 파일이 맞는지 확인해주세요.");
+    }
+
+    const sections = [];
+    for (const name of sectionNames) {
+      const xmlText = await zip.file(name).async("string");
+      const doc = new DOMParser().parseFromString(xmlText, "application/xml");
+      if (doc.getElementsByTagName("parsererror").length) {
+        throw new Error(name + " XML 파싱 오류");
+      }
+      sections.push({ name, doc });
+    }
+
+    state = { zip, filename: file.name, sections, paragraphs: [], modifiedCount: 0 };
+    buildParagraphIndex();
+    render();
+  } catch (err) {
+    console.error(err);
+    alert("파일 열기 실패: " + (err && err.message ? err.message : err));
+  }
+}
+
+function buildParagraphIndex() {
+  state.paragraphs = [];
+  for (const sec of state.sections) {
+    const tElems = Array.from(sec.doc.getElementsByTagNameNS("*", "t"))
+      .filter((el) => el.localName === "t");
+
+    // Group hp:t by their containing hp:p ancestor, preserving document order.
+    const seen = new Map();
+    for (const t of tElems) {
+      let p = t.parentNode;
+      while (p && p.localName !== "p") p = p.parentNode;
+      if (!p) continue;
+      if (!seen.has(p)) seen.set(p, []);
+      seen.get(p).push(t);
+    }
+
+    for (const [pEl, tList] of seen) {
+      const originalText = tList.map((t) => t.textContent || "").join("");
+      if (originalText.trim().length === 0) continue; // 빈 문단 / 공백만 있는 문단은 표시 안 함
+      state.paragraphs.push({ pEl, tList, originalText, ta: null, card: null });
+    }
+  }
+}
+
+function render() {
+  filenameEl.textContent = state.filename;
+  paragraphsEl.innerHTML = "";
+
+  if (state.paragraphs.length === 0) {
+    paragraphsEl.innerHTML = '<p class="empty">편집 가능한 텍스트가 없습니다.</p>';
+    updateMeta();
+    dropEl.hidden = true;
+    editorEl.hidden = false;
+    return;
+  }
+
+  const frag = document.createDocumentFragment();
+  state.paragraphs.forEach((p, idx) => {
+    const card = document.createElement("div");
+    card.className = "p-card";
+
+    const label = document.createElement("div");
+    label.className = "p-label";
+    label.textContent = "문단 " + (idx + 1);
+    card.appendChild(label);
+
+    const ta = document.createElement("textarea");
+    ta.value = p.originalText;
+    ta.rows = 1;
+    ta.spellcheck = false;
+    ta.addEventListener("input", () => onParagraphInput(p));
+    card.appendChild(ta);
+
+    p.ta = ta;
+    p.card = card;
+    frag.appendChild(card);
+  });
+  paragraphsEl.appendChild(frag);
+
+  updateMeta();
+  dropEl.hidden = true;
+  editorEl.hidden = false;
+
+  // textarea 자동 높이는 레이아웃이 그려진 다음에 측정해야 정확하다
+  requestAnimationFrame(() => {
+    state.paragraphs.forEach((p) => autosize(p.ta));
+  });
+}
+
+function onParagraphInput(p) {
+  const wasChanged = p.ta.classList.contains("changed");
+  const isChanged = p.ta.value !== p.originalText;
+  if (isChanged !== wasChanged) {
+    p.ta.classList.toggle("changed", isChanged);
+    p.card.classList.toggle("modified", isChanged);
+    state.modifiedCount += isChanged ? 1 : -1;
+    updateMeta();
+  }
+  autosize(p.ta);
+}
+
+function updateMeta() {
+  if (!state) return;
+  const total = state.paragraphs.length;
+  metaEl.textContent = "문단 " + total + "개" +
+    (state.modifiedCount > 0 ? " · 수정 " + state.modifiedCount + "곳" : "");
+}
+
+function autosize(el) {
+  if (!el) return;
+  el.style.height = "auto";
+  el.style.height = (el.scrollHeight + 2) + "px";
+}
+
+function runReplaceAll() {
+  if (!state) return;
+  const find = findInput.value;
+  if (!find) {
+    findInput.focus();
+    return;
+  }
+  const repl = replaceInput.value;
+  let count = 0;
+  for (const p of state.paragraphs) {
+    if (p.ta.value.indexOf(find) === -1) continue;
+    const next = p.ta.value.split(find).join(repl);
+    if (next !== p.ta.value) {
+      p.ta.value = next;
+      onParagraphInput(p);
+      autosize(p.ta);
+      count++;
+    }
+  }
+  if (count === 0) alert(`"${find}" 를(을) 찾지 못했습니다.`);
+}
+
+async function saveFile() {
+  if (!state) return;
+  saveBtn.disabled = true;
+  const originalLabel = saveBtn.textContent;
+  saveBtn.textContent = "저장 중…";
+
+  try {
+    // 1. 수정된 문단만 hp:t 노드들에 반영
+    //    - 첫 hp:t 에 새 전체 텍스트 박아넣음
+    //    - 같은 문단의 나머지 hp:t 는 빈 문자열로
+    //    - 수정 안 된 문단은 그대로 두어 인라인 서식 100% 보존
+    for (const p of state.paragraphs) {
+      if (p.ta.value === p.originalText) continue;
+      if (p.tList.length === 0) continue;
+      p.tList[0].textContent = p.ta.value;
+      for (let i = 1; i < p.tList.length; i++) {
+        p.tList[i].textContent = "";
+      }
+    }
+
+    // 2. 모든 section XML 직렬화 (XML 선언 prepend 필수)
+    const serializer = new XMLSerializer();
+    for (const sec of state.sections) {
+      let xml = serializer.serializeToString(sec.doc);
+      if (!xml.startsWith("<?xml")) {
+        xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' + xml;
+      }
+      state.zip.file(sec.name, xml);
+    }
+
+    // 3. mimetype 은 STORE 압축으로 재포장 (HWPX/OWPML 규격)
+    const mimeFile = state.zip.file("mimetype");
+    if (mimeFile) {
+      const mimeBytes = await mimeFile.async("uint8array");
+      state.zip.file("mimetype", mimeBytes, { compression: "STORE" });
+    }
+
+    // 4. ZIP 생성 + 다운로드
+    const blob = await state.zip.generateAsync({
+      type: "blob",
+      mimeType: "application/hwp+zip",
+      compression: "DEFLATE",
+      compressionOptions: { level: 6 },
+    });
+
+    const stamp = new Date().toISOString().slice(0, 16).replace("T", "_").replace(/:/g, "-");
+    const baseName = state.filename.replace(/\.hwpx$/i, "");
+    const outName = baseName + "_수정_" + stamp + ".hwpx";
+
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = outName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+
+    // 5. 저장 완료 → 현재 값을 새 "원본"으로 인정 (modified 표시 해제)
+    state.paragraphs.forEach((p) => {
+      p.originalText = p.ta.value;
+      p.ta.classList.remove("changed");
+      p.card.classList.remove("modified");
+    });
+    state.modifiedCount = 0;
+    updateMeta();
+  } catch (err) {
+    console.error(err);
+    alert("저장 실패: " + (err && err.message ? err.message : err));
+  } finally {
+    saveBtn.disabled = false;
+    saveBtn.textContent = originalLabel;
+  }
+}
+</script>
+</body>
+</html>
