@@ -229,24 +229,115 @@ function downloadBytes(bytes, filename, type) {
   setTimeout(() => URL.revokeObjectURL(url), 1500);
 }
 
+// rhwp 의 _request 메서드는 내부 timeout 이 10초 고정 → 큰 파일(7MB+)에서 timeout 발생.
+// 우리 코드에서 monkey-patch 해서 loadFile 은 120초, 그 외는 30초로 늘림.
+function patchEditorTimeouts(ed) {
+  if (!ed || typeof ed._request !== "function") {
+    log("warn", "monkey-patch 대상(_request)을 찾지 못해 timeout 패치 건너뜀");
+    return;
+  }
+  let myReqId = -100000; // 음수 ID 로 원본 카운터와 충돌 방지
+  const iframe = ed._iframe;
+  const pending = ed._pending;
+  if (!iframe || !pending) {
+    log("warn", "_iframe 또는 _pending 을 못 찾음 — timeout 패치 실패");
+    return;
+  }
+  ed._request = function (method, params) {
+    return new Promise((resolve, reject) => {
+      const id = --myReqId;
+      pending.set(id, { resolve, reject });
+      const timeoutMs =
+        method === "loadFile" ? 120000 :
+        method === "exportHwp" || method === "exportHwpx" || method === "exportPdf" ? 60000 :
+        30000;
+      iframe.contentWindow.postMessage(
+        { type: "rhwp-request", id, method, params },
+        "*"
+      );
+      setTimeout(() => {
+        if (pending.has(id)) {
+          pending.delete(id);
+          reject(new Error(`Request timeout: ${method} (${timeoutMs / 1000}s 초과)`));
+        }
+      }, timeoutMs);
+    });
+  };
+  log("info", `timeout 패치 적용: loadFile=120s, export=60s, 기타=30s`);
+}
+
+// 화면에 진행 로그 표시 (디버그)
+function log(level, msg) {
+  const stamp = new Date().toLocaleTimeString();
+  const line = `[${stamp}] [${level}] ${msg}`;
+  console.log(line);
+  const dbg = document.getElementById("debugLog");
+  if (dbg) {
+    const div = document.createElement("div");
+    div.textContent = line;
+    div.style.color = level === "error" ? "#dc2626" : level === "warn" ? "#d97706" : "#374151";
+    dbg.appendChild(div);
+    dbg.scrollTop = dbg.scrollHeight;
+  }
+}
+
 // 에디터 부팅 (페이지 로드 직후)
 async function bootEditor() {
   showLoading("에디터 준비 중…", "rhwp 엔진을 처음 가져옵니다 (한 번만, 5~10초)");
   try {
+    log("info", "import @rhwp/editor 시작");
     const mod = await import("https://cdn.jsdelivr.net/npm/@rhwp/editor/+esm");
     const createEditor = mod.createEditor || (mod.default && mod.default.createEditor);
     if (typeof createEditor !== "function") throw new Error("createEditor 함수를 찾지 못했습니다");
+    log("info", "createEditor 호출 (iframe 로드 대기)");
 
     editor = await createEditor(editorHost);
+    log("info", "createEditor 완료, _request 패치 진행");
+    patchEditorTimeouts(editor);
+
     editorReady = true;
     openBtn.disabled = false;
     hideLoading();
+    log("info", "에디터 준비 완료. 파일을 열 수 있습니다.");
+
+    // 자체 테스트용 globals
+    window.__editor = editor;
+    window.__loadFileFromBuffer = async (buf, name) => {
+      const u8 = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
+      const ab = u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength);
+      currentFilename = name;
+      filenameLabel.textContent = name;
+      log("info", `__loadFileFromBuffer: ${name} (${ab.byteLength} bytes)`);
+      const t0 = performance.now();
+      const r = await editor.loadFile(ab, name);
+      log("info", `loadFile 완료 ${(performance.now() - t0).toFixed(0)}ms — ${JSON.stringify(r)}`);
+      saveHwpxBtn.disabled = false;
+      saveHwpBtn.disabled = false;
+      savePdfBtn.disabled = false;
+      hideWelcome();
+      hideLoading();
+      return r;
+    };
+
+    // ?selfTest=1 자동 진단 모드
+    if (new URLSearchParams(location.search).get("selfTest") === "1") {
+      enableSelfTestUI();
+    }
   } catch (err) {
+    log("error", "에디터 부팅 실패: " + (err && err.message ? err.message : err));
     console.error(err);
     hideLoading();
     welcome.classList.remove("hidden");
-    alert("에디터 로드 실패. 새로고침 후 다시 시도해주세요.\n\n" + (err && err.message ? err.message : err));
   }
+}
+
+function enableSelfTestUI() {
+  log("info", "selfTest 모드 활성화");
+  const dbg = document.createElement("div");
+  dbg.id = "debugLog";
+  dbg.style.cssText = "position:fixed;bottom:0;left:0;right:0;height:240px;background:#fff;border-top:2px solid #2563eb;overflow:auto;padding:8px;font:12px monospace;z-index:200;";
+  document.body.appendChild(dbg);
+  log("info", "디버그 로그 패널 표시됨");
 }
 
 // 파일 로드 (.hwp / .hwpx 둘 다 rhwp가 처리)
@@ -261,9 +352,15 @@ async function loadFile(file) {
     return;
   }
   try {
-    showLoading("파일 여는 중…", file.name);
+    const sizeMb = (file.size / 1048576).toFixed(1);
+    showLoading("파일 여는 중…", `${file.name} (${sizeMb}MB)`);
+    log("info", `파일 선택: ${file.name} (${file.size} bytes / ${sizeMb}MB)`);
+    const t0 = performance.now();
     const buffer = await file.arrayBuffer();
+    log("info", `arrayBuffer 변환 ${(performance.now() - t0).toFixed(0)}ms`);
+    const t1 = performance.now();
     const result = await editor.loadFile(buffer, file.name);
+    log("info", `editor.loadFile 응답 ${(performance.now() - t1).toFixed(0)}ms — ${JSON.stringify(result)}`);
     currentFilename = file.name;
     filenameLabel.textContent = file.name;
     saveHwpxBtn.disabled = false;
@@ -271,9 +368,9 @@ async function loadFile(file) {
     savePdfBtn.disabled = false;
     hideWelcome();
     hideLoading();
-    console.log("로드 완료:", result);
   } catch (err) {
     hideLoading();
+    log("error", "파일 열기 실패: " + (err && err.message ? err.message : err));
     console.error(err);
     alert("파일 열기 실패: " + (err && err.message ? err.message : err));
   }
