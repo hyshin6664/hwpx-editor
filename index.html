@@ -295,6 +295,21 @@ async function bootEditor() {
     log("info", "createEditor 완료, _request 패치 진행");
     patchEditorTimeouts(editor);
 
+    // 디버그: iframe→outer 모든 메시지 로깅
+    window.addEventListener("message", (e) => {
+      if (e.source !== editor._iframe.contentWindow) return;
+      const d = e.data;
+      if (!d) return;
+      const summary = {
+        type: d.type,
+        id: d.id,
+        idType: typeof d.id,
+        hasResult: "result" in d,
+        hasError: "error" in d,
+      };
+      log("debug", "iframe→us: " + JSON.stringify(summary));
+    });
+
     editorReady = true;
     openBtn.disabled = false;
     hideLoading();
@@ -302,6 +317,36 @@ async function bootEditor() {
 
     // 자체 테스트용 globals
     window.__editor = editor;
+
+    // 직접 postMessage 방식 (rhwp 의 _request 우회). _request 의 10초 timeout 영향 없음.
+    window.__directLoadFile = (buf, name) => {
+      const u8 = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
+      const ab = u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength);
+      return new Promise((resolve, reject) => {
+        const myId = "direct-" + Date.now() + "-" + Math.random().toString(36).slice(2);
+        const handler = (e) => {
+          if (e.source !== editor._iframe.contentWindow) return;
+          if (e.data?.type !== "rhwp-response") return;
+          if (e.data.id !== myId) return;
+          window.removeEventListener("message", handler);
+          if (e.data.error) reject(new Error(e.data.error));
+          else resolve(e.data.result);
+        };
+        window.addEventListener("message", handler);
+        log("info", `direct postMessage loadFile (id=${myId}, ${ab.byteLength} bytes)`);
+        editor._iframe.contentWindow.postMessage({
+          type: "rhwp-request",
+          id: myId,
+          method: "loadFile",
+          params: { data: ab, fileName: name },
+        }, "*");
+        setTimeout(() => {
+          window.removeEventListener("message", handler);
+          reject(new Error("direct postMessage timeout 180s"));
+        }, 180000);
+      });
+    };
+
     window.__loadFileFromBuffer = async (buf, name) => {
       const u8 = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
       const ab = u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength);
@@ -309,8 +354,16 @@ async function bootEditor() {
       filenameLabel.textContent = name;
       log("info", `__loadFileFromBuffer: ${name} (${ab.byteLength} bytes)`);
       const t0 = performance.now();
-      const r = await editor.loadFile(ab, name);
-      log("info", `loadFile 완료 ${(performance.now() - t0).toFixed(0)}ms — ${JSON.stringify(r)}`);
+      let r;
+      try {
+        r = await editor.loadFile(ab, name);
+        log("info", `editor.loadFile 완료 ${(performance.now() - t0).toFixed(0)}ms — ${JSON.stringify(r)}`);
+      } catch (e1) {
+        log("warn", `editor.loadFile 실패: ${e1.message}, direct postMessage 폴백 시도`);
+        const t1 = performance.now();
+        r = await window.__directLoadFile(ab, name);
+        log("info", `direct loadFile 완료 ${(performance.now() - t1).toFixed(0)}ms — ${JSON.stringify(r)}`);
+      }
       saveHwpxBtn.disabled = false;
       saveHwpBtn.disabled = false;
       savePdfBtn.disabled = false;
