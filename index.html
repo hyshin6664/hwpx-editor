@@ -347,6 +347,54 @@ async function bootEditor() {
       });
     };
 
+    // 안전한 loadFile: 에디터 자체 ready 신호 + WASM 초기화 대기 + 실패 시 재시도
+    window.__safeLoadFile = async (ab, name) => {
+      // 1) 에디터에 "ready" ping 으로 응답 가능한지 확인
+      for (let i = 0; i < 60; i++) {
+        try {
+          const ok = await editor._request("ready");
+          if (ok) break;
+        } catch (e) {
+          // 무시, 다시 시도
+        }
+        await new Promise(r => setTimeout(r, 250));
+      }
+      log("info", `에디터 ready 확인됨, loadFile 시작`);
+
+      // 2) loadFile 시도, WASM 관련 에러면 재시도
+      const isWasmInitError = (err) =>
+        err && err.message && (
+          err.message.includes("__wbindgen_malloc") ||
+          err.message.includes("wasm") ||
+          err.message.includes("WASM") ||
+          err.message.includes("not initialized")
+        );
+
+      let lastErr;
+      for (let attempt = 1; attempt <= 4; attempt++) {
+        try {
+          const t = performance.now();
+          const r = await editor.loadFile(ab, name);
+          log("info", `loadFile 성공 (attempt ${attempt}, ${(performance.now() - t).toFixed(0)}ms) — ${JSON.stringify(r)}`);
+          return r;
+        } catch (err) {
+          lastErr = err;
+          if (isWasmInitError(err) && attempt < 4) {
+            log("warn", `WASM 초기화 미완료 (attempt ${attempt}), ${attempt}초 대기 후 재시도`);
+            await new Promise(r => setTimeout(r, attempt * 1000));
+            continue;
+          }
+          if (attempt < 4) {
+            log("warn", `loadFile 실패 (${err.message}), 1초 대기 후 재시도 ${attempt + 1}/4`);
+            await new Promise(r => setTimeout(r, 1000));
+            continue;
+          }
+          throw err;
+        }
+      }
+      throw lastErr;
+    };
+
     window.__loadFileFromBuffer = async (buf, name) => {
       const u8 = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
       const ab = u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength);
@@ -354,16 +402,8 @@ async function bootEditor() {
       filenameLabel.textContent = name;
       log("info", `__loadFileFromBuffer: ${name} (${ab.byteLength} bytes)`);
       const t0 = performance.now();
-      let r;
-      try {
-        r = await editor.loadFile(ab, name);
-        log("info", `editor.loadFile 완료 ${(performance.now() - t0).toFixed(0)}ms — ${JSON.stringify(r)}`);
-      } catch (e1) {
-        log("warn", `editor.loadFile 실패: ${e1.message}, direct postMessage 폴백 시도`);
-        const t1 = performance.now();
-        r = await window.__directLoadFile(ab, name);
-        log("info", `direct loadFile 완료 ${(performance.now() - t1).toFixed(0)}ms — ${JSON.stringify(r)}`);
-      }
+      const r = await window.__safeLoadFile(ab, name);
+      log("info", `최종 완료 ${(performance.now() - t0).toFixed(0)}ms`);
       saveHwpxBtn.disabled = false;
       saveHwpBtn.disabled = false;
       savePdfBtn.disabled = false;
@@ -412,8 +452,8 @@ async function loadFile(file) {
     const buffer = await file.arrayBuffer();
     log("info", `arrayBuffer 변환 ${(performance.now() - t0).toFixed(0)}ms`);
     const t1 = performance.now();
-    const result = await editor.loadFile(buffer, file.name);
-    log("info", `editor.loadFile 응답 ${(performance.now() - t1).toFixed(0)}ms — ${JSON.stringify(result)}`);
+    const result = await window.__safeLoadFile(buffer, file.name);
+    log("info", `safeLoadFile 응답 ${(performance.now() - t1).toFixed(0)}ms — ${JSON.stringify(result)}`);
     currentFilename = file.name;
     filenameLabel.textContent = file.name;
     saveHwpxBtn.disabled = false;
