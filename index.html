@@ -318,12 +318,14 @@ async function bootEditor() {
     // 자체 테스트용 globals
     window.__editor = editor;
 
-    // 직접 postMessage 방식 (rhwp 의 _request 우회). _request 의 10초 timeout 영향 없음.
+    // 직접 postMessage. rhwp 의 'hwpctl-load' 프로토콜 사용 (rhwp-request 핸들러의 변수 shadowing 회피).
+    // editor._request 와 그 10초 timeout 도 우회.
     window.__directLoadFile = (buf, name) => {
       const u8 = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
-      const ab = u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength);
+      // rhwp 가 i.data 를 new Uint8Array(...) 로 받음. ArrayBuffer 또는 Uint8Array 모두 가능.
+      const dataPayload = u8;
       return new Promise((resolve, reject) => {
-        const myId = "direct-" + Date.now() + "-" + Math.random().toString(36).slice(2);
+        const myId = "ld-" + Date.now() + "-" + Math.random().toString(36).slice(2);
         const handler = (e) => {
           if (e.source !== editor._iframe.contentWindow) return;
           if (e.data?.type !== "rhwp-response") return;
@@ -333,60 +335,54 @@ async function bootEditor() {
           else resolve(e.data.result);
         };
         window.addEventListener("message", handler);
-        log("info", `direct postMessage loadFile (id=${myId}, ${ab.byteLength} bytes)`);
+        log("info", `hwpctl-load (id=${myId}, ${u8.byteLength} bytes)`);
         editor._iframe.contentWindow.postMessage({
-          type: "rhwp-request",
+          type: "hwpctl-load",
           id: myId,
-          method: "loadFile",
-          params: { data: ab, fileName: name },
+          data: dataPayload,
+          fileName: name,
         }, "*");
         setTimeout(() => {
           window.removeEventListener("message", handler);
-          reject(new Error("direct postMessage timeout 180s"));
+          reject(new Error("hwpctl-load timeout 180s"));
         }, 180000);
       });
     };
 
-    // 안전한 loadFile: 에디터 자체 ready 신호 + WASM 초기화 대기 + 실패 시 재시도
+    // 안전한 loadFile: hwpctl-load 프로토콜 우선, 실패 시 editor.loadFile 폴백
     window.__safeLoadFile = async (ab, name) => {
-      // 1) 에디터에 "ready" ping 으로 응답 가능한지 확인
-      for (let i = 0; i < 60; i++) {
-        try {
-          const ok = await editor._request("ready");
-          if (ok) break;
-        } catch (e) {
-          // 무시, 다시 시도
-        }
-        await new Promise(r => setTimeout(r, 250));
+      const u8 = new Uint8Array(ab);
+
+      // 시도 1: hwpctl-load 프로토콜 (직접 postMessage, 가장 깔끔)
+      try {
+        log("info", "시도 1: hwpctl-load 프로토콜");
+        const t0 = performance.now();
+        const r = await window.__directLoadFile(u8, name);
+        log("info", `hwpctl-load 성공 (${(performance.now() - t0).toFixed(0)}ms) — ${JSON.stringify(r)}`);
+        return r;
+      } catch (err1) {
+        log("warn", `hwpctl-load 실패: ${err1.message}, editor.loadFile 폴백`);
       }
-      log("info", `에디터 ready 확인됨, loadFile 시작`);
 
-      // 2) loadFile 시도, WASM 관련 에러면 재시도
-      const isWasmInitError = (err) =>
-        err && err.message && (
-          err.message.includes("__wbindgen_malloc") ||
-          err.message.includes("wasm") ||
-          err.message.includes("WASM") ||
-          err.message.includes("not initialized")
-        );
-
+      // 시도 2: editor.loadFile (rhwp 표준 API)
+      const isWasmErr = (err) => err && err.message && (
+        err.message.includes("__wbindgen_malloc") ||
+        err.message.includes("not initialized")
+      );
       let lastErr;
-      for (let attempt = 1; attempt <= 4; attempt++) {
+      for (let attempt = 1; attempt <= 3; attempt++) {
         try {
+          log("info", `시도 2.${attempt}: editor.loadFile`);
           const t = performance.now();
           const r = await editor.loadFile(ab, name);
-          log("info", `loadFile 성공 (attempt ${attempt}, ${(performance.now() - t).toFixed(0)}ms) — ${JSON.stringify(r)}`);
+          log("info", `editor.loadFile 성공 (${(performance.now() - t).toFixed(0)}ms) — ${JSON.stringify(r)}`);
           return r;
         } catch (err) {
           lastErr = err;
-          if (isWasmInitError(err) && attempt < 4) {
-            log("warn", `WASM 초기화 미완료 (attempt ${attempt}), ${attempt}초 대기 후 재시도`);
-            await new Promise(r => setTimeout(r, attempt * 1000));
-            continue;
-          }
-          if (attempt < 4) {
-            log("warn", `loadFile 실패 (${err.message}), 1초 대기 후 재시도 ${attempt + 1}/4`);
-            await new Promise(r => setTimeout(r, 1000));
+          const wait = isWasmErr(err) ? attempt * 1500 : 1000;
+          if (attempt < 3) {
+            log("warn", `editor.loadFile 실패 (${err.message}), ${wait}ms 후 재시도`);
+            await new Promise(r => setTimeout(r, wait));
             continue;
           }
           throw err;
