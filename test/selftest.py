@@ -152,21 +152,26 @@ def main():
             if not r7.get("ok"):
                 p("  FAIL exportHwpx")
 
-            p("[8] Test exportPdf (if supported)...")
+            p("[8] Test PDF flow (SVG collection)...")
+            t0 = time.time()
             r8 = page.evaluate(
                 """async () => {
                   try {
-                    if (typeof window.__editor.exportPdf !== 'function') {
-                      return { ok: false, error: 'exportPdf not supported by rhwp', skipped: true };
+                    const total = await window.__editor.pageCount();
+                    if (!total || total < 1) return { ok: false, error: 'no pages' };
+                    let totalLen = 0;
+                    for (let i = 0; i < total; i++) {
+                      const svg = await window.__editor.getPageSvg(i);
+                      if (!svg || svg.length < 100) return { ok: false, error: `page ${i} svg too short` };
+                      totalLen += svg.length;
                     }
-                    const bytes = await window.__editor.exportPdf();
-                    return { ok: true, length: bytes.length || bytes.byteLength };
+                    return { ok: true, pages: total, totalSvgChars: totalLen };
                   } catch (err) {
                     return { ok: false, error: String(err && err.message ? err.message : err) };
                   }
                 }"""
             )
-            p(f"  exportPdf: {r8}")
+            p(f"  PDF SVG collection in {time.time()-t0:.1f}s: {r8}")
 
             p("[9] Test save buttons enabled state in UI...")
             ui_state = page.evaluate(
@@ -181,15 +186,53 @@ def main():
             p(f"  UI state: {ui_state}")
             page.screenshot(path=str(OUT_DIR / "03_after_all.png"), full_page=False)
 
+            p("[10a] Click saveHwpxBtn → download...")
+            with page.expect_download(timeout=60000) as dl_info:
+                page.click("#saveHwpxBtn")
+            dl = dl_info.value
+            dl_path = OUT_DIR / "downloaded.hwpx"
+            dl.save_as(str(dl_path))
+            dl_size = dl_path.stat().st_size if dl_path.exists() else 0
+            p(f"  saveHwpxBtn → {dl_size} bytes ({dl.suggested_filename})")
+
+            p("[10b] Click saveHwpBtn → download...")
+            with page.expect_download(timeout=60000) as dl_info2:
+                page.click("#saveHwpBtn")
+            dl2 = dl_info2.value
+            dl_path2 = OUT_DIR / "downloaded.hwp"
+            dl2.save_as(str(dl_path2))
+            dl_size2 = dl_path2.stat().st_size if dl_path2.exists() else 0
+            p(f"  saveHwpBtn → {dl_size2} bytes ({dl2.suggested_filename})")
+
+            p("[10c] Click savePdfBtn → opens new window...")
+            with page.context.expect_page(timeout=60000) as pop_info:
+                page.click("#savePdfBtn")
+            popup = pop_info.value
+            try:
+                popup.wait_for_load_state("domcontentloaded", timeout=30000)
+                pdf_html_size = popup.evaluate("() => document.body.innerHTML.length")
+                p(f"  savePdfBtn → popup HTML body length: {pdf_html_size}")
+                popup.close()
+            except Exception as ex:
+                p(f"  popup wait err: {ex}")
+                pdf_html_size = 0
+
             # 종합 결과
-            ok = result.get("ok") and r6.get("ok") and r7.get("ok") and ui_state.get("saveHwpx") and ui_state.get("saveHwp")
+            ok = (
+                result.get("ok") and
+                r6.get("ok") and r7.get("ok") and r8.get("ok") and
+                ui_state.get("saveHwpx") and ui_state.get("saveHwp") and ui_state.get("savePdf") and
+                dl_size > 1000 and dl_size2 > 1000 and pdf_html_size > 1000
+            )
             if ok:
                 p("\n=== FINAL: PASS ===")
-                p(f"  loadFile: OK ({elapsed:.1f}s)")
-                p(f"  pageCount: 80")
+                p(f"  loadFile: OK ({elapsed:.1f}s, {result.get('result',{}).get('pageCount')} pages)")
                 p(f"  exportHwp: OK ({r6.get('length')} bytes)")
                 p(f"  exportHwpx: OK ({r7.get('length')} bytes)")
-                p(f"  exportPdf: {'OK' if r8.get('ok') else 'NOT SUPPORTED (use Print to PDF)'}")
+                p(f"  PDF SVGs: OK ({r8.get('pages')} pages)")
+                p(f"  UI .hwpx download: OK ({dl_size} bytes)")
+                p(f"  UI .hwp download: OK ({dl_size2} bytes)")
+                p(f"  UI PDF window: OK ({pdf_html_size} chars)")
             else:
                 p("\n=== FINAL: FAIL ===")
                 _dump_logs(console_logs, page_errors)
