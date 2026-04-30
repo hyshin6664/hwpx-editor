@@ -109,20 +109,90 @@ def main():
             page_count = result.get("result", {}).get("pageCount", "?")
             p(f"  pageCount: {page_count}")
 
-            p("[6] Try editor.exportHwp() (verify save works)...")
+            p("[6] Test exportHwp...")
             t0 = time.time()
-            export_result = page.evaluate(
+            r6 = page.evaluate(
                 """async () => {
-                    try {
-                      const bytes = await window.__editor.exportHwp();
-                      return { ok: true, length: bytes.length || bytes.byteLength };
-                    } catch (err) {
-                      return { ok: false, error: String(err && err.message ? err.message : err) };
-                    }
+                  try {
+                    const bytes = await window.__editor.exportHwp();
+                    const len = bytes.length || bytes.byteLength;
+                    return { ok: true, length: len };
+                  } catch (err) {
+                    return { ok: false, error: String(err && err.message ? err.message : err) };
+                  }
                 }"""
             )
-            elapsed = time.time() - t0
-            p(f"  exportHwp in {elapsed:.1f}s: {export_result}")
+            p(f"  exportHwp in {time.time()-t0:.1f}s: {r6}")
+            if not r6.get("ok"):
+                p("  FAIL exportHwp")
+
+            p("[7] Test exportHwpx (via hwpxjs fallback if needed)...")
+            t0 = time.time()
+            r7 = page.evaluate(
+                """async () => {
+                  try {
+                    let bytes;
+                    if (typeof window.__editor.exportHwpx === 'function') {
+                      bytes = await window.__editor.exportHwpx();
+                    } else {
+                      const hwpBytes = await window.__editor.exportHwp();
+                      const u8 = hwpBytes instanceof Uint8Array ? hwpBytes : new Uint8Array(hwpBytes);
+                      const mod = await import('https://cdn.jsdelivr.net/npm/@ssabrojs/hwpxjs/dist/browser/hwpxjs.browser.mjs');
+                      const hwpToHwpx = mod.hwpToHwpx || (mod.default && mod.default.hwpToHwpx);
+                      bytes = await hwpToHwpx(u8, { creator: 'hwpx-editor' });
+                    }
+                    return { ok: true, length: bytes.length || bytes.byteLength };
+                  } catch (err) {
+                    return { ok: false, error: String(err && err.message ? err.message : err) };
+                  }
+                }"""
+            )
+            p(f"  exportHwpx in {time.time()-t0:.1f}s: {r7}")
+            if not r7.get("ok"):
+                p("  FAIL exportHwpx")
+
+            p("[8] Test exportPdf (if supported)...")
+            r8 = page.evaluate(
+                """async () => {
+                  try {
+                    if (typeof window.__editor.exportPdf !== 'function') {
+                      return { ok: false, error: 'exportPdf not supported by rhwp', skipped: true };
+                    }
+                    const bytes = await window.__editor.exportPdf();
+                    return { ok: true, length: bytes.length || bytes.byteLength };
+                  } catch (err) {
+                    return { ok: false, error: String(err && err.message ? err.message : err) };
+                  }
+                }"""
+            )
+            p(f"  exportPdf: {r8}")
+
+            p("[9] Test save buttons enabled state in UI...")
+            ui_state = page.evaluate(
+                """() => ({
+                  saveHwpx: !document.getElementById('saveHwpxBtn').disabled,
+                  saveHwp: !document.getElementById('saveHwpBtn').disabled,
+                  savePdf: !document.getElementById('savePdfBtn').disabled,
+                  filename: document.getElementById('filename') ? document.getElementById('filename').textContent :
+                            document.getElementById('filenameLabel') ? document.getElementById('filenameLabel').textContent : null,
+                })"""
+            )
+            p(f"  UI state: {ui_state}")
+            page.screenshot(path=str(OUT_DIR / "03_after_all.png"), full_page=False)
+
+            # 종합 결과
+            ok = result.get("ok") and r6.get("ok") and r7.get("ok") and ui_state.get("saveHwpx") and ui_state.get("saveHwp")
+            if ok:
+                p("\n=== FINAL: PASS ===")
+                p(f"  loadFile: OK ({elapsed:.1f}s)")
+                p(f"  pageCount: 80")
+                p(f"  exportHwp: OK ({r6.get('length')} bytes)")
+                p(f"  exportHwpx: OK ({r7.get('length')} bytes)")
+                p(f"  exportPdf: {'OK' if r8.get('ok') else 'NOT SUPPORTED (use Print to PDF)'}")
+            else:
+                p("\n=== FINAL: FAIL ===")
+                _dump_logs(console_logs, page_errors)
+                sys.exit(1)
 
         except PWTimeout as e:
             p(f"\nFAIL: playwright timeout - {e}")

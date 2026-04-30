@@ -532,21 +532,52 @@ saveHwpBtn.addEventListener("click", async () => {
   }
 });
 
-// PDF 저장
+// PDF 저장: 모든 페이지 SVG 를 새 창에 모아서 인쇄 → PDF 저장 다이얼로그
 savePdfBtn.addEventListener("click", async () => {
   if (!editor) return;
   const orig = savePdfBtn.innerHTML;
   savePdfBtn.disabled = true;
-  savePdfBtn.innerHTML = '<span class="ico">⏳</span><span class="label">변환 중…</span>';
+  savePdfBtn.innerHTML = '<span class="ico">⏳</span><span class="label">PDF 준비 중…</span>';
   try {
-    if (typeof editor.exportPdf === "function") {
-      const bytes = await editor.exportPdf();
-      downloadBytes(bytes, setBaseName() + ".pdf", "application/pdf");
-    } else {
-      alert("PDF 저장은 다음 업데이트에서 지원 예정입니다.\n\n임시로: 브라우저 [인쇄(Ctrl+P)] → [대상: PDF로 저장] 사용 가능합니다.");
+    log("info", "PDF 준비: 모든 페이지 SVG 수집 중");
+    const total = await editor.pageCount();
+    if (!total || total < 1) throw new Error("페이지가 없습니다");
+
+    const svgs = [];
+    for (let i = 0; i < total; i++) {
+      const svg = await editor.getPageSvg(i);
+      svgs.push(svg);
+      if (i % 10 === 0) log("info", `SVG 수집 ${i + 1}/${total}`);
     }
+    log("info", `총 ${total}페이지 SVG 수집 완료, 인쇄 창 띄움`);
+
+    const docTitle = setBaseName();
+    const html = [
+      '<!DOCTYPE html><html><head><meta charset="utf-8">',
+      '<title>', docTitle, '</title>',
+      '<style>',
+      '@page { size: A4; margin: 0; }',
+      'html,body { margin:0; padding:0; background:#fff; }',
+      '.page { page-break-after: always; display:block; margin:0 auto; }',
+      '.page:last-child { page-break-after: auto; }',
+      '.page svg { display:block; max-width:100%; height:auto; }',
+      '@media screen { body { background:#525659; padding:20px; } .page { background:#fff; box-shadow:0 2px 8px rgba(0,0,0,.4); margin:0 auto 20px; } }',
+      '@media print { body { background:#fff; padding:0; } .page { box-shadow:none; margin:0; } }',
+      '</style></head><body>',
+      ...svgs.map(s => `<div class="page">${s}</div>`),
+      '<script>window.addEventListener("load",()=>setTimeout(()=>window.print(),300));</script>',
+      "</body></html>",
+    ].join("");
+
+    const win = window.open("", "_blank");
+    if (!win) throw new Error("팝업 차단됨 — 브라우저 설정에서 팝업 허용해주세요");
+    win.document.open();
+    win.document.write(html);
+    win.document.close();
+    log("info", "인쇄 창 띄움 (사용자가 PDF 저장 선택)");
   } catch (err) {
     console.error(err);
+    log("error", "PDF 준비 실패: " + (err && err.message ? err.message : err));
     alert("PDF 저장 실패: " + (err && err.message ? err.message : err));
   } finally {
     savePdfBtn.innerHTML = orig;
