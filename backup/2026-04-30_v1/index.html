@@ -45,7 +45,6 @@
   }
   .notice b { color: #1f2937; }
   .notice ul { margin: 6px 0 0; padding-left: 18px; }
-  .notice a { color: #2563eb; }
 
   #editor { margin-top: 18px; }
   .bar {
@@ -66,31 +65,18 @@
   button.ghost { background: #fff; color: #1f2937; border-color: #cbd5e1; }
   button.ghost:hover { background: #f1f5f9; border-color: #94a3b8; }
 
-  .find-bar {
-    background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
-    padding: 10px 12px; margin-top: 10px;
-    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
-  }
-  .find-bar input {
-    flex: 1 1 180px; min-width: 0;
-    font: inherit; padding: 7px 10px;
-    border: 1px solid #e2e8f0; border-radius: 8px; background: #fafafa;
-  }
-  .find-bar input:focus { outline: none; border-color: #2563eb; background: #fff; }
-  .find-bar .arrow { color: #94a3b8; font-size: 14px; }
-
-  #paragraphs { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+  #paragraphs { margin-top: 14px; display: flex; flex-direction: column; gap: 10px; }
   .p-card {
-    background: #fff; border: 1px solid #e2e8f0; border-radius: 10px;
-    padding: 10px 12px;
-    transition: border-color .12s, background .12s;
+    background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
+    padding: 12px 14px;
   }
+  .p-label { font-size: 12px; color: #64748b; margin-bottom: 8px; }
   .p-card.modified { border-color: #fbbf24; background: #fffbeb; }
-  .p-label { font-size: 11px; color: #94a3b8; margin-bottom: 4px; user-select: none; }
+  .t-row { margin-bottom: 6px; }
+  .t-row:last-child { margin-bottom: 0; }
   textarea {
     width: 100%; resize: none; overflow: hidden;
-    display: block;
-    font-family: inherit; font-size: 15px; line-height: 1.55;
+    font-family: inherit; font-size: 15px; line-height: 1.5;
     padding: 8px 10px;
     border: 1px solid #e2e8f0; border-radius: 8px;
     background: #fafafa; color: #111827;
@@ -136,8 +122,8 @@
     </ul>
     <b style="display:block;margin-top:10px;">한계</b>
     <ul>
-      <li>표 · 이미지 · 그림 같은 비텍스트 요소는 편집되지 않습니다 (그대로 보존됩니다)</li>
-      <li>구형 <code>.hwp</code> 파일은 지원하지 않습니다 — <a href="https://www.hancomspace.com" target="_blank" rel="noopener">한컴스페이스(무료)</a>에서 .hwpx로 변환 후 사용해주세요</li>
+      <li>표 · 이미지 · 서식 편집은 안 됩니다 (텍스트 문구만)</li>
+      <li>구형 <code>.hwp</code> 파일은 한컴오피스에서 "다른 이름으로 저장 → HWPX(*.hwpx)"로 변환 후 사용</li>
     </ul>
   </div>
 
@@ -148,14 +134,6 @@
       <button id="save">수정한 .hwpx 다운로드</button>
       <button id="reset" class="ghost">다른 파일</button>
     </div>
-
-    <div class="find-bar">
-      <input id="findInput" type="text" placeholder="찾을 문구">
-      <span class="arrow">→</span>
-      <input id="replaceInput" type="text" placeholder="바꿀 문구">
-      <button id="replaceAll" class="ghost">모두 바꾸기</button>
-    </div>
-
     <div id="paragraphs"></div>
   </section>
 
@@ -179,17 +157,9 @@ const filenameEl = $("filename");
 const metaEl = $("meta");
 const saveBtn = $("save");
 const resetBtn = $("reset");
-const findInput = $("findInput");
-const replaceInput = $("replaceInput");
-const replaceAllBtn = $("replaceAll");
 
 let state = null;
-// state = {
-//   zip, filename,
-//   sections: [{ name, doc }],
-//   paragraphs: [{ pEl, tList, originalText, ta, card }],
-//   modifiedCount
-// }
+// state = { zip, filename, sections: [{name, doc, originalXml}], modifiedCount }
 
 dropEl.addEventListener("click", () => pickerEl.click());
 dropEl.addEventListener("keydown", (e) => {
@@ -210,13 +180,14 @@ dropEl.addEventListener("drop", (e) => {
 resetBtn.addEventListener("click", () => {
   if (state && state.modifiedCount > 0 &&
       !confirm("수정한 내용이 다운로드되지 않았습니다. 정말 다른 파일을 여시겠어요?")) return;
-  resetState();
+  state = null;
+  pickerEl.value = "";
+  paragraphsEl.innerHTML = "";
+  editorEl.hidden = true;
+  dropEl.hidden = false;
 });
 
 saveBtn.addEventListener("click", saveFile);
-replaceAllBtn.addEventListener("click", runReplaceAll);
-findInput.addEventListener("keydown", (e) => { if (e.key === "Enter") runReplaceAll(); });
-replaceInput.addEventListener("keydown", (e) => { if (e.key === "Enter") runReplaceAll(); });
 
 window.addEventListener("beforeunload", (e) => {
   if (state && state.modifiedCount > 0) {
@@ -225,24 +196,10 @@ window.addEventListener("beforeunload", (e) => {
   }
 });
 
-function resetState() {
-  state = null;
-  pickerEl.value = "";
-  paragraphsEl.innerHTML = "";
-  findInput.value = "";
-  replaceInput.value = "";
-  editorEl.hidden = true;
-  dropEl.hidden = false;
-}
-
 async function loadFile(file) {
   const lower = file.name.toLowerCase();
   if (lower.endsWith(".hwp") && !lower.endsWith(".hwpx")) {
-    alert("구형 .hwp 파일은 직접 편집할 수 없습니다.\n\n" +
-      "1) 한컴오피스에서 '다른 이름으로 저장' → 파일 형식 'HWPX(*.hwpx)' 선택\n" +
-      "또는\n" +
-      "2) 한컴스페이스(무료)에서 .hwpx로 저장 — https://www.hancomspace.com\n\n" +
-      "변환 후 다시 시도해주세요.");
+    alert("구형 .hwp 파일은 지원하지 않습니다.\n\n한컴오피스에서 파일 → 다른 이름으로 저장 → 파일 형식 'HWPX(*.hwpx)' 선택 후 다시 시도해주세요.");
     return;
   }
   if (!lower.endsWith(".hwpx")) {
@@ -267,11 +224,10 @@ async function loadFile(file) {
       if (doc.getElementsByTagName("parsererror").length) {
         throw new Error(name + " XML 파싱 오류");
       }
-      sections.push({ name, doc });
+      sections.push({ name, doc, originalXml: xmlText });
     }
 
-    state = { zip, filename: file.name, sections, paragraphs: [], modifiedCount: 0 };
-    buildParagraphIndex();
+    state = { zip, filename: file.name, sections, modifiedCount: 0 };
     render();
   } catch (err) {
     console.error(err);
@@ -279,120 +235,91 @@ async function loadFile(file) {
   }
 }
 
-function buildParagraphIndex() {
-  state.paragraphs = [];
-  for (const sec of state.sections) {
-    const tElems = Array.from(sec.doc.getElementsByTagNameNS("*", "t"))
-      .filter((el) => el.localName === "t");
-
-    // Group hp:t by their containing hp:p ancestor, preserving document order.
-    const seen = new Map();
-    for (const t of tElems) {
-      let p = t.parentNode;
-      while (p && p.localName !== "p") p = p.parentNode;
-      if (!p) continue;
-      if (!seen.has(p)) seen.set(p, []);
-      seen.get(p).push(t);
-    }
-
-    for (const [pEl, tList] of seen) {
-      const originalText = tList.map((t) => t.textContent || "").join("");
-      if (originalText.trim().length === 0) continue; // 빈 문단 / 공백만 있는 문단은 표시 안 함
-      state.paragraphs.push({ pEl, tList, originalText, ta: null, card: null });
-    }
-  }
-}
-
 function render() {
   filenameEl.textContent = state.filename;
   paragraphsEl.innerHTML = "";
 
-  if (state.paragraphs.length === 0) {
-    paragraphsEl.innerHTML = '<p class="empty">편집 가능한 텍스트가 없습니다.</p>';
-    updateMeta();
-    dropEl.hidden = true;
-    editorEl.hidden = false;
-    return;
+  let pCount = 0;
+  let tCount = 0;
+
+  for (const sec of state.sections) {
+    const tElems = Array.from(sec.doc.getElementsByTagNameNS("*", "t"))
+      .filter((el) => el.localName === "t");
+
+    const pBuckets = new Map();
+    for (const t of tElems) {
+      let p = t.parentNode;
+      while (p && p.localName !== "p") p = p.parentNode;
+      if (!p) continue;
+      if (!pBuckets.has(p)) pBuckets.set(p, []);
+      pBuckets.get(p).push(t);
+    }
+
+    for (const [, tList] of pBuckets) {
+      const visible = tList.filter((t) => (t.textContent || "").length > 0);
+      if (visible.length === 0) continue;
+
+      pCount++;
+      const card = document.createElement("div");
+      card.className = "p-card";
+
+      const label = document.createElement("div");
+      label.className = "p-label";
+      label.textContent = "문단 " + pCount;
+      card.appendChild(label);
+
+      for (const t of visible) {
+        const row = document.createElement("div");
+        row.className = "t-row";
+        const ta = document.createElement("textarea");
+        ta.value = t.textContent;
+        ta.rows = 1;
+        ta.dataset.original = t.textContent;
+        ta.addEventListener("input", () => {
+          t.textContent = ta.value;
+          const wasChanged = ta.classList.contains("changed");
+          const isChanged = ta.value !== ta.dataset.original;
+          if (isChanged !== wasChanged) {
+            ta.classList.toggle("changed", isChanged);
+            card.classList.toggle("modified", cardHasChange(card));
+            state.modifiedCount += isChanged ? 1 : -1;
+            updateMeta();
+          }
+          autosize(ta);
+        });
+        row.appendChild(ta);
+        card.appendChild(row);
+        tCount++;
+      }
+
+      paragraphsEl.appendChild(card);
+      // Auto-size after appending so scrollHeight is correct
+      card.querySelectorAll("textarea").forEach(autosize);
+    }
   }
 
-  const frag = document.createDocumentFragment();
-  state.paragraphs.forEach((p, idx) => {
-    const card = document.createElement("div");
-    card.className = "p-card";
-
-    const label = document.createElement("div");
-    label.className = "p-label";
-    label.textContent = "문단 " + (idx + 1);
-    card.appendChild(label);
-
-    const ta = document.createElement("textarea");
-    ta.value = p.originalText;
-    ta.rows = 1;
-    ta.spellcheck = false;
-    ta.addEventListener("input", () => onParagraphInput(p));
-    card.appendChild(ta);
-
-    p.ta = ta;
-    p.card = card;
-    frag.appendChild(card);
-  });
-  paragraphsEl.appendChild(frag);
+  if (tCount === 0) {
+    paragraphsEl.innerHTML = '<p class="empty">편집 가능한 텍스트가 없습니다.</p>';
+  }
 
   updateMeta();
   dropEl.hidden = true;
   editorEl.hidden = false;
-
-  // textarea 자동 높이는 레이아웃이 그려진 다음에 측정해야 정확하다
-  requestAnimationFrame(() => {
-    state.paragraphs.forEach((p) => autosize(p.ta));
-  });
 }
 
-function onParagraphInput(p) {
-  const wasChanged = p.ta.classList.contains("changed");
-  const isChanged = p.ta.value !== p.originalText;
-  if (isChanged !== wasChanged) {
-    p.ta.classList.toggle("changed", isChanged);
-    p.card.classList.toggle("modified", isChanged);
-    state.modifiedCount += isChanged ? 1 : -1;
-    updateMeta();
-  }
-  autosize(p.ta);
+function cardHasChange(card) {
+  return Array.from(card.querySelectorAll("textarea")).some((t) => t.classList.contains("changed"));
 }
 
 function updateMeta() {
   if (!state) return;
-  const total = state.paragraphs.length;
-  metaEl.textContent = "문단 " + total + "개" +
-    (state.modifiedCount > 0 ? " · 수정 " + state.modifiedCount + "곳" : "");
+  const total = paragraphsEl.querySelectorAll("textarea").length;
+  metaEl.textContent = "텍스트 " + total + "개" + (state.modifiedCount > 0 ? " · 수정 " + state.modifiedCount + "곳" : "");
 }
 
 function autosize(el) {
-  if (!el) return;
   el.style.height = "auto";
   el.style.height = (el.scrollHeight + 2) + "px";
-}
-
-function runReplaceAll() {
-  if (!state) return;
-  const find = findInput.value;
-  if (!find) {
-    findInput.focus();
-    return;
-  }
-  const repl = replaceInput.value;
-  let count = 0;
-  for (const p of state.paragraphs) {
-    if (p.ta.value.indexOf(find) === -1) continue;
-    const next = p.ta.value.split(find).join(repl);
-    if (next !== p.ta.value) {
-      p.ta.value = next;
-      onParagraphInput(p);
-      autosize(p.ta);
-      count++;
-    }
-  }
-  if (count === 0) alert(`"${find}" 를(을) 찾지 못했습니다.`);
 }
 
 async function saveFile() {
@@ -402,20 +329,6 @@ async function saveFile() {
   saveBtn.textContent = "저장 중…";
 
   try {
-    // 1. 수정된 문단만 hp:t 노드들에 반영
-    //    - 첫 hp:t 에 새 전체 텍스트 박아넣음
-    //    - 같은 문단의 나머지 hp:t 는 빈 문자열로
-    //    - 수정 안 된 문단은 그대로 두어 인라인 서식 100% 보존
-    for (const p of state.paragraphs) {
-      if (p.ta.value === p.originalText) continue;
-      if (p.tList.length === 0) continue;
-      p.tList[0].textContent = p.ta.value;
-      for (let i = 1; i < p.tList.length; i++) {
-        p.tList[i].textContent = "";
-      }
-    }
-
-    // 2. 모든 section XML 직렬화 (XML 선언 prepend 필수)
     const serializer = new XMLSerializer();
     for (const sec of state.sections) {
       let xml = serializer.serializeToString(sec.doc);
@@ -425,14 +338,14 @@ async function saveFile() {
       state.zip.file(sec.name, xml);
     }
 
-    // 3. mimetype 은 STORE 압축으로 재포장 (HWPX/OWPML 규격)
+    // Re-add mimetype with STORE compression (HWPX/OWPML spec).
+    // Read raw bytes to avoid altering BOM / trailing whitespace.
     const mimeFile = state.zip.file("mimetype");
     if (mimeFile) {
       const mimeBytes = await mimeFile.async("uint8array");
       state.zip.file("mimetype", mimeBytes, { compression: "STORE" });
     }
 
-    // 4. ZIP 생성 + 다운로드
     const blob = await state.zip.generateAsync({
       type: "blob",
       mimeType: "application/hwp+zip",
@@ -452,12 +365,12 @@ async function saveFile() {
     document.body.removeChild(a);
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 
-    // 5. 저장 완료 → 현재 값을 새 "원본"으로 인정 (modified 표시 해제)
-    state.paragraphs.forEach((p) => {
-      p.originalText = p.ta.value;
-      p.ta.classList.remove("changed");
-      p.card.classList.remove("modified");
+    // Reset modified counter (treat current state as the new "original")
+    paragraphsEl.querySelectorAll("textarea").forEach((ta) => {
+      ta.dataset.original = ta.value;
+      ta.classList.remove("changed");
     });
+    paragraphsEl.querySelectorAll(".p-card").forEach((c) => c.classList.remove("modified"));
     state.modifiedCount = 0;
     updateMeta();
   } catch (err) {
