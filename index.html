@@ -786,7 +786,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v19<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v19.1<span class="dot"></span></button>
   </div>
   <span class="filename" id="filenameLabel"></span>
   <span id="wordCount" style="margin-left:8px;font-size:11px;color:var(--text-muted);font-weight:500"></span>
@@ -1259,12 +1259,22 @@ async function loadFile(file) {
   if (newMode === 'docx') return mountDocx(file);
 }
 
-// 모든 모드 호스트·상태 청소 (모드 전환 시)
+// 모든 모드 호스트·상태 청소 (모드 전환 시) — 메모리 누수 방지
 function clearAllHostsAndState() {
+  // PDF 드래그 listener / PDF.js 정리
+  if (pdfState && Array.isArray(pdfState._cleanups)) {
+    pdfState._cleanups.forEach(fn => { try { fn(); } catch(_) {} });
+    pdfState._cleanups = [];
+  }
+  if (pdfState && pdfState._pdfDocLoadingTask) {
+    try { pdfState._pdfDocLoadingTask.destroy(); } catch(_) {}
+  }
   const pdfHost = document.getElementById('pdfHost');
   const docxHost = document.getElementById('docxHost');
-  if (pdfHost) { pdfHost.innerHTML = ''; pdfHost.style.display = 'none'; }
-  if (docxHost) { docxHost.innerHTML = ''; docxHost.style.display = 'none'; }
+  if (pdfHost) { pdfHost.innerHTML = ''; pdfHost.style.display = 'none'; pdfHost.style.paddingLeft = ''; delete pdfHost.dataset.hasThumbs; }
+  if (docxHost) { docxHost.innerHTML = ''; docxHost.style.display = 'none'; docxHost.style.overflowX = ''; }
+  // PDF 썸네일 사이드바 정리
+  const t = document.getElementById('pdfThumbs'); if (t) t.remove();
   if (editor && editor._iframe) editor._iframe.style.display = 'none';
   // state reset
   pdfState = null;
@@ -1328,7 +1338,7 @@ async function mountPdf(file) {
     showLoading("PDF 여는 중…", file.name);
     const buffer = await file.arrayBuffer();
     const bytes = new Uint8Array(buffer);
-    pdfState = { bytes, pages: [], tool: 'pointer', fontSize: 12, fontFamily: 'NotoSansKR' };
+    pdfState = { bytes, pages: [], tool: 'pointer', fontSize: 12, fontFamily: 'NotoSansKR', _cleanups: [] };
     currentFilename = file.name;
     filenameLabel.textContent = file.name;
 
@@ -1400,7 +1410,9 @@ async function mountPdf(file) {
     pdfRedoBtn.addEventListener('click', () => pdfRedo());
 
     const pdfjs = await getPdfjs();
-    const pdfDoc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
+    const loadingTask = pdfjs.getDocument({ data: bytes.slice() });
+    pdfState._pdfDocLoadingTask = loadingTask;
+    const pdfDoc = await loadingTask.promise;
     pdfState.numPages = pdfDoc.numPages;
     log("info", `PDF 로드: ${pdfDoc.numPages}페이지`);
 
@@ -1689,7 +1701,13 @@ function attachPageInteractions(pg) {
       }
       window.addEventListener('mousemove', onMouseMove);
       window.addEventListener('mouseup', onMouseUp);
-      // 터치
+      const touchMoveHandler = (e) => {
+        if (!dragData || !e.touches[0]) return;
+        const dx = e.touches[0].clientX - dragData.startCx;
+        const dy = e.touches[0].clientY - dragData.startCy;
+        m.style.left = (dragData.origLeft + dx) + 'px';
+        m.style.top = (dragData.origTop + dy) + 'px';
+      };
       m.addEventListener('touchstart', (e) => {
         if (e.touches[0]) {
           dragData = { startCx: e.touches[0].clientX, startCy: e.touches[0].clientY, origLeft: parseFloat(m.style.left), origTop: parseFloat(m.style.top) };
@@ -1698,22 +1716,29 @@ function attachPageInteractions(pg) {
           e.preventDefault();
         }
       }, { passive: false });
-      window.addEventListener('touchmove', (e) => {
-        if (!dragData || !e.touches[0]) return;
-        const dx = e.touches[0].clientX - dragData.startCx;
-        const dy = e.touches[0].clientY - dragData.startCy;
-        m.style.left = (dragData.origLeft + dx) + 'px';
-        m.style.top = (dragData.origTop + dy) + 'px';
-      }, { passive: false });
+      window.addEventListener('touchmove', touchMoveHandler, { passive: false });
       window.addEventListener('touchend', onMouseUp);
+      // 정리 — 모드 전환 시 listener 제거 (메모리 누수 방지)
+      if (pdfState && pdfState._cleanups) {
+        pdfState._cleanups.push(() => {
+          window.removeEventListener('mousemove', onMouseMove);
+          window.removeEventListener('mouseup', onMouseUp);
+          window.removeEventListener('touchmove', touchMoveHandler);
+          window.removeEventListener('touchend', onMouseUp);
+        });
+      }
     });
   }
-  // 도구 변경 시 마커 재구성
-  document.addEventListener('click', (e) => {
+  // 도구 변경 시 마커 재구성 — 한 번만 등록 (모드 전환 시 정리)
+  const toolClickHandler = (e) => {
     if (e.target && e.target.dataset && e.target.dataset.tool) {
       setTimeout(rebuildEditMarkers, 50);
     }
-  });
+  };
+  document.addEventListener('click', toolClickHandler);
+  if (pdfState && pdfState._cleanups) {
+    pdfState._cleanups.push(() => document.removeEventListener('click', toolClickHandler));
+  }
   pg._rebuildEditMarkers = rebuildEditMarkers;
 
   // 글씨 입력
