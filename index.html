@@ -671,7 +671,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v15<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v16<span class="dot"></span></button>
   </div>
   <span class="filename" id="filenameLabel"></span>
   <span id="wordCount" style="margin-left:8px;font-size:11px;color:var(--text-muted);font-weight:500"></span>
@@ -2393,6 +2393,7 @@ setMode = function(m) {
 
 // === 업데이트 내역 (소식) ===
 const UPDATE_HISTORY = [
+  { version: "v16", date: "2026-05-02", desc: "📱 모바일 UX 전면 개편 — 하단 액션 바(엄지존), 햄버거 드로어(보조 메뉴), 44px+ 터치 타겟, 단일 손 사용 최적화" },
   { version: "v15", date: "2026-05-02", desc: "음성 입력 robust 동작 (Selection API 기반 캐럿 정확 보존, 에러별 안내) · 종합 자체 테스트 50+ 항목으로 확장 · 안정성 강화" },
   { version: "v14", date: "2026-05-01", desc: "🎙️ 음성 입력 (한국어) · 📷 OCR (스캔 PDF → 글자) · 🖋 도장/서명 이미지 · 📄 PDF 썸네일 사이드바 · 📨 양식 일괄 만들기 (mail merge) · ✕ 닫기 버튼 + 모드 전환 시 호스트 자동 청소" },
   { version: "v13", date: "2026-05-01", desc: "방문자 카운터 로컬화 · [➕ 새 문서] 빈 .docx/.hwpx · 우상단 글자수 (공백 제외) · 모드별 모든 형식 다운로드 (HWP↔DOCX, PDF→DOCX/HWPX) · [🖨️ 인쇄] 직접 인쇄 버튼" },

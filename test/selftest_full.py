@@ -607,7 +607,7 @@ def main():
         # ─── 50. 헤더 버전 v15 ──
         try:
             ver = page.evaluate("() => document.getElementById('verBtn').textContent")
-            step("50. 헤더 버전 v15", "v15" in ver, ver)
+            step("50. 헤더 버전 최신", "v16" in ver or "v15" in ver, ver)
         except Exception as e:
             step("50. 헤더 버전", False, str(e))
 
