@@ -557,16 +557,16 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v10<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v13<span class="dot"></span></button>
   </div>
   <span class="filename" id="filenameLabel"></span>
   <span id="wordCount" style="margin-left:8px;font-size:11px;color:var(--text-muted);font-weight:500"></span>
   <div class="spacer"></div>
 
   <div class="group">
-    <button class="btn" id="openBtn" disabled><span class="ico">📁</span><span class="label">열기</span></button>
+    <button class="btn" id="openBtn"><span class="ico">📁</span><span class="label">열기</span></button>
     <div style="position:relative;display:inline-block">
-      <button class="btn" id="newBtn" disabled title="빈 문서 새로 만들기"><span class="ico">➕</span><span class="label">새 문서</span></button>
+      <button class="btn" id="newBtn" title="빈 문서 새로 만들기"><span class="ico">➕</span><span class="label">새 문서</span></button>
       <div id="newMenu" style="display:none;position:absolute;top:100%;left:0;margin-top:4px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);z-index:50;min-width:160px;overflow:hidden">
         <button class="newm-item" data-fmt="docx" style="display:block;width:100%;text-align:left;padding:9px 14px;border:none;background:transparent;cursor:pointer;font:inherit;color:var(--text)">📝 빈 워드 (.docx)</button>
         <button class="newm-item" data-fmt="hwpx" style="display:block;width:100%;text-align:left;padding:9px 14px;border:none;background:transparent;cursor:pointer;font:inherit;color:var(--text)">📄 빈 한글 (.hwpx)</button>
@@ -2215,6 +2215,9 @@ setMode = function(m) {
 
 // === 업데이트 내역 (소식) ===
 const UPDATE_HISTORY = [
+  { version: "v13", date: "2026-05-01", desc: "방문자 카운터 로컬화 · [➕ 새 문서] 빈 .docx/.hwpx · 우상단 글자수 (공백 제외) · 모드별 모든 형식 다운로드 (HWP↔DOCX, PDF→DOCX/HWPX) · [🖨️ 인쇄] 직접 인쇄 버튼" },
+  { version: "v12", date: "2026-05-01", desc: "🔍 검색·바꾸기 패널 (Ctrl+F) — 데스크톱 우측 / 모바일 하단 드로어 · 결과 카드 클릭 이동 · 일괄 바꾸기 (DOCX)" },
+  { version: "v11", date: "2026-05-01", desc: "DOCX 충실 렌더링 (표·서식 보존, docx-preview 엔진) + 인라인 편집 + 헤더 버전 표시 + 소식 모달" },
   { version: "v10", date: "2026-05-01", desc: "PDF 되돌리기(Ctrl+Z) · 색상 선택 · 모바일 터치 · 자동저장(IndexedDB) · 방문자 카운터 · 디자인 개편 (slate/sage/rose) · 업데이트 내역 모달" },
   { version: "v9",  date: "2026-05-01", desc: "디자인 전문가톤 + Pretendard 폰트 + Solbox Docs 브랜딩 + 다포맷 문구" },
   { version: "v8",  date: "2026-05-01", desc: "PDF 지우개+글씨 편집 (드래그 지우개, 클릭 글씨 입력, 한글 폰트 임베딩 — Noto Sans KR / Pretendard / 나눔)" },
@@ -2307,7 +2310,7 @@ setInterval(updateWordCount, 1500);
 // =============================================================
 const newBtn = document.getElementById('newBtn');
 const newMenu = document.getElementById('newMenu');
-function setNewBtnEnabled() { newBtn.disabled = !editorReady; }
+function setNewBtnEnabled() { newBtn.disabled = false; } // rhwp 부팅과 무관 — .docx 는 즉시, .hwpx 는 다운로드만
 newBtn.addEventListener('click', (e) => {
   e.stopPropagation();
   newMenu.style.display = newMenu.style.display === 'block' ? 'none' : 'block';
@@ -2335,17 +2338,20 @@ newMenu.querySelectorAll('.newm-item').forEach(b => {
         await mountDocx(file);
       } else if (fmt === 'hwpx') {
         const hwpxjs = await loadHwpxjs();
-        // markdownToHwpx 사용
-        let bytes;
-        if (typeof hwpxjs.markdownToHwpx === 'function') {
-          bytes = await hwpxjs.markdownToHwpx("# 새 문서\n\n");
+        const m2h = hwpxjs.markdownToHwpx || (hwpxjs.default && hwpxjs.default.markdownToHwpx);
+        if (typeof m2h !== 'function') throw new Error("hwpxjs markdownToHwpx 없음");
+        const bytes = await m2h("# 새 문서\n\n");
+        // rhwp 부팅 됐으면 즉시 마운트, 안 됐으면 다운로드만
+        if (editor && editorReady) {
+          const blob = new Blob([bytes], { type: "application/hwp+zip" });
+          const file = new File([blob], "새문서.hwpx", { type: "application/hwp+zip" });
+          hideLoading();
+          await mountHwp(file);
         } else {
-          throw new Error("hwpxjs markdownToHwpx 없음");
+          hideLoading();
+          downloadBytes(bytes, "새문서.hwpx", "application/hwp+zip");
+          alert("빈 .hwpx 다운로드되었어요. 받으신 파일을 다시 끌어다 놓으면 편집 가능합니다 (한글 엔진 준비 중).");
         }
-        const blob = new Blob([bytes], { type: "application/hwp+zip" });
-        const file = new File([blob], "새문서.hwpx", { type: "application/hwp+zip" });
-        hideLoading();
-        await mountHwp(file);
       }
     } catch (err) {
       hideLoading();
