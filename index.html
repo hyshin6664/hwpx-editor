@@ -115,6 +115,86 @@
   #editorHost { width: 100%; height: 100%; }
   #editorHost iframe { width: 100%; height: 100%; border: 0; display: block; }
 
+  /* PDF 편집 툴바 */
+  .pdf-toolbar {
+    display: none;
+    position: sticky; top: 0; z-index: 4;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 8px 14px;
+    gap: 8px; align-items: center; flex-wrap: wrap;
+    box-shadow: var(--shadow-soft);
+  }
+  .pdf-toolbar.visible { display: flex; }
+  .pdf-toolbar .tool {
+    border: 1.5px solid var(--border);
+    background: var(--surface);
+    padding: 6px 12px; border-radius: 10px;
+    font-size: 13px; cursor: pointer;
+    display: inline-flex; align-items: center; gap:5px;
+    transition: all .15s; color: var(--text);
+  }
+  .pdf-toolbar .tool:hover { background: var(--primary-soft); border-color: var(--primary); }
+  .pdf-toolbar .tool.active {
+    background: linear-gradient(135deg, var(--primary), var(--primary-deep));
+    color: #fff; border-color: var(--primary-deep);
+    box-shadow: 0 2px 8px rgba(167, 150, 217, 0.4);
+  }
+  .pdf-toolbar .tool-sep { width: 1px; align-self:stretch; background: var(--border-soft); margin: 4px 4px; }
+  .pdf-toolbar label { font-size: 12px; color: var(--text-soft); display:flex; align-items:center; gap:6px; }
+  .pdf-toolbar input[type=range] { width: 80px; }
+  .pdf-toolbar input[type=number] {
+    width: 50px; padding: 4px 6px; font-size: 12px;
+    border: 1.5px solid var(--border); border-radius: 6px;
+    background: var(--surface); color: var(--text);
+  }
+  .pdf-toolbar select {
+    padding: 5px 8px; font-size: 12px;
+    border: 1.5px solid var(--border); border-radius: 8px;
+    background: var(--surface); color: var(--text);
+    font-family: inherit;
+  }
+  .pdf-toolbar .tip { color: var(--text-muted); font-size: 11px; margin-left: auto; }
+
+  /* PDF 페이지 + 편집 오버레이 */
+  .pdf-page-wrap {
+    position: relative;
+    display: block; margin: 0 auto 16px;
+    max-width: 95%;
+  }
+  .pdf-page-wrap canvas {
+    display: block;
+    background:#fff;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+    width: 100%;
+  }
+  .pdf-overlay {
+    position: absolute; inset: 0;
+    pointer-events: auto;
+  }
+  .pdf-overlay.tool-pointer { cursor: default; }
+  .pdf-overlay.tool-erase { cursor: cell; }
+  .pdf-overlay.tool-text { cursor: text; }
+
+  .erase-selection {
+    position: absolute;
+    border: 1.5px dashed var(--accent-pink);
+    background: rgba(255, 200, 214, 0.25);
+    pointer-events: none;
+  }
+  .text-input-popup {
+    position: absolute;
+    min-width: 80px;
+    padding: 4px 6px;
+    border: 1.5px solid var(--primary);
+    background: rgba(255,255,255,0.95);
+    border-radius: 4px;
+    font-family: 'Noto Sans KR', 'Pretendard', sans-serif;
+    outline: none;
+    box-shadow: 0 2px 8px rgba(167, 150, 217, 0.5);
+    z-index: 10;
+  }
+
   /* Welcome / Loading overlay */
   .overlay {
     position: absolute; inset: 0;
@@ -633,38 +713,92 @@ async function mountPdf(file) {
     showLoading("PDF 여는 중…", file.name);
     const buffer = await file.arrayBuffer();
     const bytes = new Uint8Array(buffer);
-    pdfState = { bytes };
+    pdfState = { bytes, pages: [], tool: 'pointer', fontSize: 12, fontFamily: 'NotoSansKR' };
     currentFilename = file.name;
     filenameLabel.textContent = file.name;
 
-    // 기존 hwp iframe 숨기고 PDF 컨테이너 보이기
     if (editor && editor._iframe) editor._iframe.style.display = 'none';
     let pdfHost = document.getElementById('pdfHost');
     if (!pdfHost) {
       pdfHost = document.createElement('div');
       pdfHost.id = 'pdfHost';
-      pdfHost.style.cssText = 'width:100%;height:100%;overflow:auto;background:#525659;padding:20px 0;';
+      pdfHost.style.cssText = 'width:100%;height:100%;overflow:auto;background:#525659;';
       editorHost.appendChild(pdfHost);
-    } else {
-      pdfHost.innerHTML = '';
-      pdfHost.style.display = '';
-    }
+    } else { pdfHost.innerHTML = ''; pdfHost.style.display = ''; }
+
+    // 툴바
+    const toolbar = document.createElement('div');
+    toolbar.className = 'pdf-toolbar visible';
+    toolbar.innerHTML = `
+      <button class="tool active" data-tool="pointer">👆 보기</button>
+      <button class="tool" data-tool="erase">🩹 지우개</button>
+      <button class="tool" data-tool="text">✏️ 글씨</button>
+      <span class="tool-sep"></span>
+      <label>크기 <input type="number" id="pdfFontSize" value="12" min="6" max="72" step="1"></label>
+      <label>글씨체 <select id="pdfFontFamily">
+        <option value="NotoSansKR" selected>Noto Sans (한글 추천)</option>
+        <option value="Pretendard">Pretendard</option>
+        <option value="NanumGothic">나눔고딕</option>
+        <option value="NanumMyeongjo">나눔명조</option>
+      </select></label>
+      <span class="tip">지우개=드래그 / 글씨=클릭</span>
+    `;
+    pdfHost.appendChild(toolbar);
+    const pagesContainer = document.createElement('div');
+    pagesContainer.style.padding = '20px 0';
+    pdfHost.appendChild(pagesContainer);
+
+    toolbar.querySelectorAll('.tool').forEach(b => b.addEventListener('click', () => {
+      toolbar.querySelectorAll('.tool').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+      pdfState.tool = b.dataset.tool;
+      document.querySelectorAll('.pdf-overlay').forEach(o => {
+        o.className = 'pdf-overlay tool-' + pdfState.tool;
+      });
+    }));
+    document.getElementById('pdfFontSize').addEventListener('change', (e) => {
+      pdfState.fontSize = parseInt(e.target.value, 10) || 12;
+    });
+    document.getElementById('pdfFontFamily').addEventListener('change', (e) => {
+      pdfState.fontFamily = e.target.value;
+    });
 
     const pdfjs = await getPdfjs();
-    // bytes 가 transferred 되지 않게 복사
     const pdfDoc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
     pdfState.numPages = pdfDoc.numPages;
     log("info", `PDF 로드: ${pdfDoc.numPages}페이지`);
 
+    const SCALE = 1.5;
     for (let i = 1; i <= pdfDoc.numPages; i++) {
       const page = await pdfDoc.getPage(i);
-      const viewport = page.getViewport({ scale: 1.5 });
+      const viewport = page.getViewport({ scale: SCALE });
+      const wrap = document.createElement('div');
+      wrap.className = 'pdf-page-wrap';
+      wrap.style.width = viewport.width + 'px';
+
       const canvas = document.createElement('canvas');
       canvas.width = viewport.width;
       canvas.height = viewport.height;
-      canvas.style.cssText = 'display:block;margin:0 auto 16px;background:#fff;box-shadow:0 2px 12px rgba(0,0,0,0.3);max-width:95%;height:auto;';
-      pdfHost.appendChild(canvas);
+      const overlay = document.createElement('div');
+      overlay.className = 'pdf-overlay tool-pointer';
+      wrap.appendChild(canvas);
+      wrap.appendChild(overlay);
+      pagesContainer.appendChild(wrap);
+
       await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+
+      // PDF 좌표계 정보 (pdf-lib 저장용)
+      const pdfPageWidth = viewport.width / SCALE;   // PDF points
+      const pdfPageHeight = viewport.height / SCALE;
+      const pageState = {
+        pageIndex: i - 1,
+        canvas, overlay,
+        viewport, scale: SCALE,
+        pdfPageWidth, pdfPageHeight,
+        edits: [],
+      };
+      pdfState.pages.push(pageState);
+      attachPageInteractions(pageState);
     }
 
     setMode('pdf');
@@ -677,6 +811,179 @@ async function mountPdf(file) {
     console.error(err);
     alert("PDF 열기 실패: " + (err && err.message ? err.message : err));
   }
+}
+
+// 페이지별 마우스 인터랙션 (지우개 / 글씨)
+function attachPageInteractions(pg) {
+  const overlay = pg.overlay;
+  const canvas = pg.canvas;
+  const ctx = canvas.getContext('2d');
+
+  // 화면 좌표 → 캔버스 픽셀 좌표
+  function toCanvasPx(e) {
+    const r = overlay.getBoundingClientRect();
+    const sx = canvas.width / r.width;
+    const sy = canvas.height / r.height;
+    return { cx: (e.clientX - r.left) * sx, cy: (e.clientY - r.top) * sy };
+  }
+  // 캔버스 픽셀 좌표 → PDF 좌표 (pdf-lib는 좌하단 기준)
+  function toPdfCoords(cx, cy, cw, ch) {
+    return {
+      x: cx / pg.scale,
+      y: pg.pdfPageHeight - (cy + ch) / pg.scale,
+      w: cw / pg.scale,
+      h: ch / pg.scale,
+    };
+  }
+  // 영역 평균 색상 (사방 5px 외곽)
+  function sampleAvgColor(x, y, w, h) {
+    try {
+      const samples = [];
+      const probes = [
+        [x-3,y], [x+w+3,y], [x-3,y+h], [x+w+3,y+h],
+        [x+w/2,y-3], [x+w/2,y+h+3], [x-3,y+h/2], [x+w+3,y+h/2],
+      ];
+      for (const [px, py] of probes) {
+        if (px<0||py<0||px>=canvas.width||py>=canvas.height) continue;
+        const d = ctx.getImageData(Math.floor(px), Math.floor(py), 1, 1).data;
+        samples.push([d[0], d[1], d[2]]);
+      }
+      if (samples.length === 0) return [255, 255, 255];
+      const avg = [0, 0, 0];
+      samples.forEach(s => { avg[0]+=s[0]; avg[1]+=s[1]; avg[2]+=s[2]; });
+      return avg.map(v => Math.round(v / samples.length));
+    } catch (_e) { return [255, 255, 255]; }
+  }
+
+  // 지우개 드래그
+  let dragSel = null;
+  overlay.addEventListener('mousedown', (e) => {
+    if (pdfState.tool !== 'erase') return;
+    e.preventDefault();
+    const { cx, cy } = toCanvasPx(e);
+    dragSel = { startCx: cx, startCy: cy, el: null };
+    const r = overlay.getBoundingClientRect();
+    const div = document.createElement('div');
+    div.className = 'erase-selection';
+    div.style.left = (e.clientX - r.left) + 'px';
+    div.style.top = (e.clientY - r.top) + 'px';
+    div.style.width = '0'; div.style.height = '0';
+    overlay.appendChild(div);
+    dragSel.el = div;
+    dragSel.startClientX = e.clientX; dragSel.startClientY = e.clientY;
+  });
+  overlay.addEventListener('mousemove', (e) => {
+    if (!dragSel) return;
+    const r = overlay.getBoundingClientRect();
+    const x = Math.min(dragSel.startClientX, e.clientX) - r.left;
+    const y = Math.min(dragSel.startClientY, e.clientY) - r.top;
+    const w = Math.abs(e.clientX - dragSel.startClientX);
+    const h = Math.abs(e.clientY - dragSel.startClientY);
+    dragSel.el.style.left = x + 'px';
+    dragSel.el.style.top = y + 'px';
+    dragSel.el.style.width = w + 'px';
+    dragSel.el.style.height = h + 'px';
+  });
+  overlay.addEventListener('mouseup', (e) => {
+    if (!dragSel) return;
+    const { cx, cy } = toCanvasPx(e);
+    const x = Math.min(dragSel.startCx, cx);
+    const y = Math.min(dragSel.startCy, cy);
+    const w = Math.abs(cx - dragSel.startCx);
+    const h = Math.abs(cy - dragSel.startCy);
+    if (dragSel.el) dragSel.el.remove();
+    dragSel = null;
+    if (w < 4 || h < 4) return; // 너무 작으면 무시
+    const color = sampleAvgColor(x, y, w, h);
+    // 화면에 즉시 반영: 캔버스 위에 직접 fillRect + 살짝 블러 (소프트 엣지)
+    ctx.save();
+    ctx.fillStyle = `rgb(${color[0]},${color[1]},${color[2]})`;
+    ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
+    // 작은 노이즈로 자연스럽게
+    for (let i = 0; i < Math.min(40, w*h/100); i++) {
+      const px = x + Math.random() * w;
+      const py = y + Math.random() * h;
+      const jitter = Math.round((Math.random() - 0.5) * 8);
+      ctx.fillStyle = `rgb(${Math.max(0,Math.min(255,color[0]+jitter))},${Math.max(0,Math.min(255,color[1]+jitter))},${Math.max(0,Math.min(255,color[2]+jitter))})`;
+      ctx.fillRect(px, py, 1, 1);
+    }
+    ctx.restore();
+    // 저장용 edit 기록 (PDF 좌표)
+    const pdfCoords = toPdfCoords(x, y, w, h);
+    pg.edits.push({ type: 'erase', ...pdfCoords, color });
+  });
+
+  // 글씨 입력
+  overlay.addEventListener('click', (e) => {
+    if (pdfState.tool !== 'text') return;
+    if (e.target.classList && e.target.classList.contains('text-input-popup')) return;
+    const { cx, cy } = toCanvasPx(e);
+    const r = overlay.getBoundingClientRect();
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'text-input-popup';
+    input.style.left = (e.clientX - r.left) + 'px';
+    input.style.top = (e.clientY - r.top - pdfState.fontSize) + 'px';
+    input.style.fontSize = (pdfState.fontSize * pg.scale) + 'px';
+    input.placeholder = '입력 후 Enter';
+    overlay.appendChild(input);
+    input.focus();
+    const finalize = (commit) => {
+      const text = input.value;
+      input.remove();
+      if (!commit || !text) return;
+      // 화면에 즉시 그리기
+      ctx.save();
+      ctx.fillStyle = '#000';
+      ctx.font = `${Math.round(pdfState.fontSize * pg.scale)}px ` + getCssFontFamily(pdfState.fontFamily);
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillText(text, cx, cy);
+      ctx.restore();
+      // 저장용 edit 기록
+      const pdfCoords = toPdfCoords(cx, cy - pdfState.fontSize * pg.scale, 0, pdfState.fontSize);
+      pg.edits.push({
+        type: 'text',
+        x: pdfCoords.x,
+        y: pg.pdfPageHeight - (cy / pg.scale), // baseline (PDF y from bottom)
+        text,
+        fontSize: pdfState.fontSize,
+        fontFamily: pdfState.fontFamily,
+      });
+    };
+    input.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter') { ev.preventDefault(); finalize(true); }
+      else if (ev.key === 'Escape') { ev.preventDefault(); finalize(false); }
+    });
+    input.addEventListener('blur', () => finalize(true));
+  });
+}
+
+function getCssFontFamily(name) {
+  return ({
+    NotoSansKR: '"Noto Sans KR", -apple-system, sans-serif',
+    Pretendard: '"Pretendard", -apple-system, sans-serif',
+    NanumGothic: '"Nanum Gothic", -apple-system, sans-serif',
+    NanumMyeongjo: '"Nanum Myeongjo", serif',
+  }[name]) || 'sans-serif';
+}
+
+// 무료 한글 TTF (CDN)
+const FONT_TTF_URLS = {
+  NotoSansKR: 'https://cdn.jsdelivr.net/gh/notofonts/noto-cjk@main/Sans/SubsetOTF/KR/NotoSansKR-Regular.otf',
+  Pretendard: 'https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/packages/pretendard/dist/public/static/Pretendard-Regular.otf',
+  NanumGothic: 'https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/nanumgothic/NanumGothic-Regular.ttf',
+  NanumMyeongjo: 'https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/nanummyeongjo/NanumMyeongjo-Regular.ttf',
+};
+const fontCache = new Map();
+async function fetchFontBytes(name) {
+  if (fontCache.has(name)) return fontCache.get(name);
+  const url = FONT_TTF_URLS[name] || FONT_TTF_URLS.NotoSansKR;
+  log("info", `폰트 다운로드: ${name}`);
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`폰트 다운로드 실패 (${r.status})`);
+  const ab = await r.arrayBuffer();
+  fontCache.set(name, ab);
+  return ab;
 }
 
 // === DOCX 모드 (mammoth view + zip xml 저장) ===
@@ -828,8 +1135,53 @@ savePdfBtn.addEventListener("click", async () => {
   savePdfBtn.innerHTML = '<span class="ico">⏳</span><span class="label">PDF 준비 중…</span>';
   try {
     if (currentMode === 'pdf' && pdfState && pdfState.bytes) {
-      // PDF 모드: 원본 그대로 또는 편집한 그대로 다운로드
-      downloadBytes(pdfState.bytes, setBaseName() + ".pdf", "application/pdf");
+      // PDF 모드: 편집(지우개+글씨) 적용해서 새 PDF 저장
+      const totalEdits = pdfState.pages.reduce((s, p) => s + p.edits.length, 0);
+      if (totalEdits === 0) {
+        // 편집 없음 → 원본 그대로
+        downloadBytes(pdfState.bytes, setBaseName() + ".pdf", "application/pdf");
+        return;
+      }
+      log("info", `PDF 편집 적용: ${totalEdits}개`);
+      const pdfLib = await import("https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/+esm");
+      const fontkitMod = await import("https://cdn.jsdelivr.net/npm/@pdf-lib/fontkit@1.1.1/+esm");
+      const fontkit = fontkitMod.default || fontkitMod;
+      const pdfDoc = await pdfLib.PDFDocument.load(pdfState.bytes);
+      pdfDoc.registerFontkit(fontkit);
+      // 사용된 폰트들 모아서 임베드
+      const usedFonts = new Set();
+      pdfState.pages.forEach(p => p.edits.forEach(e => { if (e.type === 'text') usedFonts.add(e.fontFamily); }));
+      const fontMap = {};
+      for (const f of usedFonts) {
+        try {
+          const ab = await fetchFontBytes(f);
+          fontMap[f] = await pdfDoc.embedFont(ab, { subset: true });
+        } catch (err) {
+          log("warn", `폰트 ${f} 임베드 실패, Helvetica 폴백: ${err.message}`);
+          fontMap[f] = await pdfDoc.embedFont(pdfLib.StandardFonts.Helvetica);
+        }
+      }
+      const pages = pdfDoc.getPages();
+      for (const ps of pdfState.pages) {
+        const page = pages[ps.pageIndex];
+        for (const ed of ps.edits) {
+          if (ed.type === 'erase') {
+            page.drawRectangle({
+              x: ed.x, y: ed.y, width: ed.w, height: ed.h,
+              color: pdfLib.rgb(ed.color[0]/255, ed.color[1]/255, ed.color[2]/255),
+              borderWidth: 0,
+            });
+          } else if (ed.type === 'text') {
+            const font = fontMap[ed.fontFamily] || Object.values(fontMap)[0];
+            page.drawText(ed.text, {
+              x: ed.x, y: ed.y, size: ed.fontSize,
+              font, color: pdfLib.rgb(0, 0, 0),
+            });
+          }
+        }
+      }
+      const outBytes = await pdfDoc.save();
+      downloadBytes(outBytes, setBaseName() + "_수정.pdf", "application/pdf");
       return;
     }
     if (currentMode === 'docx' && docxState) {
