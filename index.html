@@ -67,6 +67,70 @@
     font-size: 10.5px; color: var(--text-muted);
     font-weight: 500; letter-spacing: 0.02em;
   }
+  .ver-btn {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-size: 11px; font-weight: 600;
+    color: var(--text-soft);
+    cursor: pointer; margin-left: 8px;
+    transition: all .15s; position: relative;
+  }
+  .ver-btn:hover { color: var(--primary-deep); border-color: var(--primary); background: var(--primary-soft); }
+  .ver-btn .dot {
+    position: absolute; top: -2px; right: -2px;
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--accent-rose);
+    box-shadow: 0 0 0 2px var(--surface);
+    display: none;
+  }
+  .ver-btn.has-new .dot { display: block; }
+
+  /* 소식 모달 */
+  .news-overlay {
+    position: fixed; inset: 0;
+    background: rgba(46, 50, 66, 0.45);
+    backdrop-filter: blur(4px);
+    z-index: 100;
+    display: flex; align-items: center; justify-content: center;
+    padding: 20px;
+  }
+  .news-overlay.hidden { display: none; }
+  .news-card {
+    background: var(--surface);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-lift);
+    max-width: 540px; width: 100%;
+    max-height: 80vh; overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+  .news-head {
+    padding: 20px 24px 14px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .news-head h3 { margin: 0; font-size: 17px; font-weight: 700; letter-spacing: -0.01em; }
+  .news-head .close {
+    background: transparent; border: none; cursor: pointer;
+    color: var(--text-muted); font-size: 22px; line-height: 1;
+    padding: 4px 8px; border-radius: 8px;
+  }
+  .news-head .close:hover { background: var(--surface-2); color: var(--text); }
+  .news-body { padding: 6px 24px 16px; overflow-y: auto; flex: 1; }
+  .news-item {
+    padding: 14px 0; border-bottom: 1px solid var(--border-soft);
+  }
+  .news-item:last-child { border-bottom: none; }
+  .news-item .ver {
+    font-size: 11.5px; font-weight: 700; color: var(--primary-deep);
+    display: inline-block; padding: 2px 9px; border-radius: 999px;
+    background: var(--primary-soft); margin-right: 8px;
+    letter-spacing: 0.01em;
+  }
+  .news-item.new .ver::after { content: " ✨"; }
+  .news-item .date { font-size: 11px; color: var(--text-muted); }
+  .news-item .desc { margin-top: 6px; font-size: 13px; color: var(--text); line-height: 1.6; font-weight: 500; }
   .filename {
     color: var(--text-soft); font-size: 12.5px;
     margin-left: 10px; max-width:240px;
@@ -366,6 +430,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v10<span class="dot"></span></button>
   </div>
   <span class="filename" id="filenameLabel"></span>
   <div class="spacer"></div>
@@ -1264,7 +1329,7 @@ async function fetchFontBytes(name) {
   return ab;
 }
 
-// === DOCX 모드 (mammoth view + zip xml 저장) ===
+// === DOCX 모드 (docx-preview 충실 렌더링 + 인라인 편집) ===
 async function mountDocx(file) {
   try {
     showLoading("워드 문서 여는 중…", file.name);
@@ -1272,80 +1337,86 @@ async function mountDocx(file) {
     currentFilename = file.name;
     filenameLabel.textContent = file.name;
 
-    // 기존 hwp iframe 숨기기
     if (editor && editor._iframe) editor._iframe.style.display = 'none';
     let docxHost = document.getElementById('docxHost');
     if (!docxHost) {
       docxHost = document.createElement('div');
       docxHost.id = 'docxHost';
-      docxHost.style.cssText = 'width:100%;height:100%;overflow:auto;background:#f5f5f5;padding:20px;';
+      docxHost.style.cssText = 'width:100%;height:100%;overflow:auto;background:#525659;padding:20px 0;';
       editorHost.appendChild(docxHost);
-    } else {
-      docxHost.innerHTML = '';
-      docxHost.style.display = '';
-    }
+    } else { docxHost.innerHTML = ''; docxHost.style.display = ''; }
 
-    // JSZip 로드 + zip 풀기
+    // JSZip 로 XML 모델 보관 (저장용)
     const jszipMod = await import("https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm");
     const JSZip = jszipMod.default || jszipMod;
-    log("info", `JSZip module: default=${typeof jszipMod.default}, loadAsync=${typeof JSZip.loadAsync}`);
     const zip = await JSZip.loadAsync(buffer);
-    log("info", `zip 풀기 완료, files: ${Object.keys(zip.files).length}`);
     const docFile = zip.file('word/document.xml');
     if (!docFile) throw new Error("word/document.xml 을 찾을 수 없음");
     const docXml = await docFile.async('string');
-    log("info", `document.xml 로드: ${docXml.length} chars`);
     const dom = new DOMParser().parseFromString(docXml, 'application/xml');
     const parserErr = dom.getElementsByTagName('parsererror');
     if (parserErr.length) throw new Error("XML 파싱 오류: " + parserErr[0].textContent.slice(0, 200));
 
-    // <w:p> 문단 단위로 <w:t> 텍스트 노드 수집
-    // namespace 무관하게 모든 element 에서 localName='p' 찾기 (안전)
+    // <w:p> 모두 수집 (XML 순서)
     const paragraphs = [];
     const allEls = dom.getElementsByTagName('*');
-    const wpList = [];
-    for (const el of allEls) if (el.localName === 'p') wpList.push(el);
-    log("info", `<w:p> 후보: ${wpList.length}개`);
-
-    for (const wp of wpList) {
+    for (const el of allEls) {
+      if (el.localName !== 'p') continue;
       const tList = [];
-      const wpDescendants = wp.getElementsByTagName('*');
-      for (const desc of wpDescendants) {
+      for (const desc of el.getElementsByTagName('*')) {
         if (desc.localName === 't') tList.push(desc);
       }
       const originalText = tList.map(t => t.textContent || '').join('');
-      paragraphs.push({ wpEl: wp, tList, originalText, el: null });
+      paragraphs.push({ wpEl: el, tList, originalText, el: null });
     }
-    const nonEmpty = paragraphs.filter(p => p.originalText.trim().length > 0).length;
-    log("info", `DOCX 분석: ${paragraphs.length} 문단 (텍스트 있음: ${nonEmpty})`);
     docxState = { zip, doc: dom, paragraphs, bytes: new Uint8Array(buffer) };
+    log("info", `DOCX 분석: ${paragraphs.length} <w:p>`);
 
-    // 페이지 같은 흰 박스 + 문단별 textarea
-    const page = document.createElement('div');
-    page.style.cssText = 'max-width:820px;margin:0 auto;background:#fff;border:1px solid #e5e7eb;border-radius:6px;padding:48px 56px;box-shadow:0 2px 12px rgba(0,0,0,0.06);min-height:60vh;';
-    docxHost.appendChild(page);
+    // docx-preview 로 충실 렌더링
+    const dpMod = await import("https://cdn.jsdelivr.net/npm/docx-preview@0.3.7/+esm");
+    const renderAsync = dpMod.renderAsync || (dpMod.default && dpMod.default.renderAsync);
+    if (typeof renderAsync !== 'function') throw new Error("docx-preview renderAsync 못 찾음");
 
-    let visibleCount = 0;
-    paragraphs.forEach((p, idx) => {
-      if (p.originalText.trim().length === 0) return;
-      visibleCount++;
-      const div = document.createElement('div');
-      div.contentEditable = 'true';
-      div.spellcheck = false;
-      div.textContent = p.originalText;
-      div.style.cssText = 'padding:6px 4px;margin:2px 0;border-radius:6px;font-size:15px;line-height:1.7;color:#1f2937;cursor:text;outline:none;';
-      div.addEventListener('focus', () => { div.style.background = '#eff6ff'; });
-      div.addEventListener('blur', () => {
-        div.style.background = (div.textContent !== p.originalText) ? '#fffbeb' : '';
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'max-width:820px;margin:0 auto;background:#fff;box-shadow:0 2px 12px rgba(0,0,0,.3);';
+    docxHost.appendChild(wrap);
+    const styleHost = document.createElement('div');
+    docxHost.appendChild(styleHost);
+
+    await renderAsync(buffer, wrap, styleHost, {
+      className: 'docx',
+      inWrapper: true,
+      ignoreWidth: false, ignoreHeight: false,
+      breakPages: true, useBase64URL: true,
+    });
+    log("info", `docx-preview 렌더링 완료`);
+
+    // 렌더된 <p> 들을 contenteditable + index 로 XML 매핑
+    const renderedPs = wrap.querySelectorAll('p');
+    log("info", `렌더링된 <p>: ${renderedPs.length} (XML <w:p>: ${paragraphs.length})`);
+    renderedPs.forEach((dp, idx) => {
+      // 빈 단락은 visual 만 (편집 불가)
+      const x = paragraphs[idx];
+      if (!x) return;
+      dp.contentEditable = 'true';
+      dp.spellcheck = false;
+      dp.style.outline = 'none';
+      dp.style.borderRadius = '3px';
+      dp.style.padding = '1px 3px';
+      dp.style.transition = 'background .12s';
+      dp.dataset.docxIdx = String(idx);
+      x.el = dp;
+      dp.addEventListener('focus', () => { dp.style.background = '#eff6ff'; });
+      dp.addEventListener('blur', () => {
+        const changed = dp.textContent !== x.originalText;
+        dp.style.background = changed ? '#fffbeb' : '';
       });
-      div.addEventListener('input', () => {
-        div.style.background = (div.textContent !== p.originalText) ? '#fffbeb' : '#eff6ff';
+      dp.addEventListener('input', () => {
+        dp.style.background = (dp.textContent !== x.originalText) ? '#fffbeb' : '#eff6ff';
         scheduleAutoSave();
       });
-      p.el = div;
-      page.appendChild(div);
     });
-    log("info", `DOCX 표시: ${visibleCount}개 편집 가능 문단`);
+    // 표 셀 안의 <p> 도 contenteditable (위에서 querySelectorAll('p')가 이미 다 잡음)
 
     setMode('docx');
     saveDocxBtn.disabled = false;
@@ -1609,6 +1680,55 @@ window.addEventListener("drop", (e) => {
   const f = e.dataTransfer.files && e.dataTransfer.files[0];
   if (f) loadFile(f);
 });
+
+// === 업데이트 내역 (소식) ===
+const UPDATE_HISTORY = [
+  { version: "v10", date: "2026-05-01", desc: "PDF 되돌리기(Ctrl+Z) · 색상 선택 · 모바일 터치 · 자동저장(IndexedDB) · 방문자 카운터 · 디자인 개편 (slate/sage/rose) · 업데이트 내역 모달" },
+  { version: "v9",  date: "2026-05-01", desc: "디자인 전문가톤 + Pretendard 폰트 + Solbox Docs 브랜딩 + 다포맷 문구" },
+  { version: "v8",  date: "2026-05-01", desc: "PDF 지우개+글씨 편집 (드래그 지우개, 클릭 글씨 입력, 한글 폰트 임베딩 — Noto Sans KR / Pretendard / 나눔)" },
+  { version: "v7",  date: "2026-05-01", desc: "워드(.docx) · PDF(.pdf) 지원 추가 — 자동 형식 감지, 모드별 다운로드 버튼" },
+  { version: "v6",  date: "2026-04-30", desc: "한글(.hwp/.hwpx) rhwp 엔진 임베드 — 100% 충실 화면 + 그 자리 클릭 편집 + 큰 파일(7MB+) 안정화" },
+  { version: "v5",  date: "2026-04-30", desc: "자체 텍스트 편집기 — 문단 통합 + 찾아바꾸기 + .hwp 자동변환 (hwpxjs)" },
+];
+const versionBtn = document.getElementById('verBtn');
+const newsOverlay = document.getElementById('newsOverlay');
+const newsBody = document.getElementById('newsBody');
+const newsClose = document.getElementById('newsClose');
+
+function getSeenVersion() {
+  try { return localStorage.getItem('solbox_docs_seen_version') || ''; } catch (_e) { return ''; }
+}
+function setSeenVersion(v) {
+  try { localStorage.setItem('solbox_docs_seen_version', v); } catch (_e) {}
+}
+function compareVer(a, b) { // "v10" > "v9" 같은 비교
+  const na = parseFloat((a||'').replace(/^v/, '')) || 0;
+  const nb = parseFloat((b||'').replace(/^v/, '')) || 0;
+  return na - nb;
+}
+function refreshVerDot() {
+  const seen = getSeenVersion();
+  const latest = UPDATE_HISTORY[0].version;
+  versionBtn.classList.toggle('has-new', compareVer(latest, seen) > 0);
+}
+function openNews() {
+  const seen = getSeenVersion();
+  newsBody.innerHTML = UPDATE_HISTORY.map(it => {
+    const isNew = compareVer(it.version, seen) > 0;
+    return `<div class="news-item${isNew ? ' new' : ''}">
+      <span class="ver">${it.version}</span><span class="date">${it.date}</span>
+      <div class="desc">${it.desc}</div>
+    </div>`;
+  }).join('');
+  newsOverlay.classList.remove('hidden');
+  // 본 표시 (가장 최신 버전으로 갱신)
+  setSeenVersion(UPDATE_HISTORY[0].version);
+  refreshVerDot();
+}
+versionBtn.addEventListener('click', openNews);
+newsClose.addEventListener('click', () => newsOverlay.classList.add('hidden'));
+newsOverlay.addEventListener('click', (e) => { if (e.target === newsOverlay) newsOverlay.classList.add('hidden'); });
+refreshVerDot();
 
 // 부팅
 bootEditor();
