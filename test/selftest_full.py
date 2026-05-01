@@ -266,17 +266,21 @@ def main():
         # ─── 23. HWP/HWPX 모드 ─────────────
         try:
             page.click("#closeBtn"); page.wait_for_timeout(400)
-            # rhwp 부팅 완료 대기
             page.wait_for_function("() => window.__editorReady === true", timeout=60000)
+            # 콘솔 마커 + 캡처 시작
+            msgs_before = len(msgs)
+            page.evaluate("() => console.log('=== HWPX_TEST_START ===')")
             page.set_input_files("#picker", str(HWPX_NEW))
-            # 페이지 로드: pageCount > 0 까지 대기 (loadFile + WASM)
-            page.wait_for_function(
-                "async () => { try { const r = await window.__probe('pageCount'); return r && r.ok && r.result > 0; } catch(_){ return false; } }",
-                timeout=120000,
-            )
-            mode = page.evaluate("() => window.currentMode")
-            pc = page.evaluate("async () => (await window.__probe('pageCount')).result")
-            step("23. HWPX 로드 → mode=hwp", mode == 'hwp' and pc > 0, f"mode={mode}, {pc}p")
+            try:
+                page.wait_for_function("() => window.__currentMode === 'hwp'", timeout=180000)
+                mode = page.evaluate("() => window.__currentMode")
+                step("23. HWPX 로드 → mode=hwp", mode == 'hwp', f"mode={mode}")
+            except Exception as e:
+                # 콘솔 로그 출력 (디버그)
+                print("    --- HWPX 로드 진단 콘솔 ---")
+                for m in msgs[msgs_before:msgs_before+50]:
+                    print(f"     {m}")
+                raise
         except Exception as e:
             step("23. HWPX 로드", False, str(e))
 

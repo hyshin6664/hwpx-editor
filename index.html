@@ -697,6 +697,7 @@ let pdfState = null;    // { bytes, pdfDoc(pdf-lib) }
 
 function setMode(mode) {
   currentMode = mode;
+  window.__currentMode = mode; // 자체 테스트 노출
   // 모든 다운로드 버튼은 항상 표시 (가능한 변환은 모두 시도)
   // 단 PDF 모드에서는 hwp/hwpx/docx 변환 가능 (텍스트만), DOCX 는 hwpx 가능, HWP 는 docx 가능
   saveHwpxBtn.style.display = '';
