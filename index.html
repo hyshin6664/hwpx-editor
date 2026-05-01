@@ -957,7 +957,7 @@ function enableSelfTestUI() {
   log("info", "디버그 로그 패널 표시됨");
 }
 
-// 파일 라우터 — 확장자에 따라 적절한 모드로 마운트
+// 파일 라우터 — 확장자에 따라 적절한 모드로 마운트 (reload 없음, 깔끔히 청소)
 async function loadFile(file) {
   const lower = file.name.toLowerCase();
   let newMode = null;
@@ -966,25 +966,35 @@ async function loadFile(file) {
   else if (lower.endsWith(".docx")) newMode = 'docx';
   else { alert("지원 형식: .hwp · .hwpx · .pdf · .docx"); return; }
 
-  // 다른 종류 파일로 전환 시 — 안전을 위해 페이지 새로고침 (메모리 청소)
-  if (currentMode && currentMode !== newMode) {
-    if (!confirm("다른 종류 파일을 여시려면 화면이 새로고침됩니다. 수정한 내용은 사라집니다. 계속할까요?")) return;
-    sessionStorage.setItem('__pendingFileName', file.name);
-    // 새 파일을 sessionStorage 에 임시 저장 후 reload — 사용자가 다시 드래그할 필요 없음
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        sessionStorage.setItem('__pendingFileData', reader.result.slice(0, 8 * 1024 * 1024)); // 최대 8MB
-      } catch (_e) { /* localStorage 한도 — 무시. 사용자가 다시 드롭 */ }
-      location.reload();
-    };
-    reader.readAsDataURL(file);
-    return;
-  }
+  // 모드 전환 또는 같은 모드 새 파일 — 항상 호스트 청소
+  clearAllHostsAndState();
 
   if (newMode === 'hwp') return mountHwp(file);
   if (newMode === 'pdf') return mountPdf(file);
   if (newMode === 'docx') return mountDocx(file);
+}
+
+// 모든 모드 호스트·상태 청소 (모드 전환 시)
+function clearAllHostsAndState() {
+  const pdfHost = document.getElementById('pdfHost');
+  const docxHost = document.getElementById('docxHost');
+  if (pdfHost) { pdfHost.innerHTML = ''; pdfHost.style.display = 'none'; }
+  if (docxHost) { docxHost.innerHTML = ''; docxHost.style.display = 'none'; }
+  if (editor && editor._iframe) editor._iframe.style.display = 'none';
+  // state reset
+  pdfState = null;
+  docxState = null;
+  // 검색 결과도 초기화
+  try {
+    if (typeof searchState !== 'undefined') {
+      searchState.matches = [];
+      searchState.currentIdx = -1;
+    }
+    const si = document.getElementById('searchInput'); if (si) si.value = '';
+    const sr = document.getElementById('searchResults'); if (sr) sr.innerHTML = '';
+    const ss = document.getElementById('searchStatus'); if (ss) ss.textContent = '문구를 입력하세요';
+    const sc = document.getElementById('searchCount'); if (sc) sc.textContent = '';
+  } catch (_e) {}
 }
 
 // HWP/HWPX 모드 (rhwp 엔진)
@@ -993,6 +1003,8 @@ async function mountHwp(file) {
     alert("한글 엔진이 아직 준비 중입니다. 잠시 후 다시 시도해주세요.");
     return;
   }
+  // 다른 모드의 hosts 숨기고 iframe 보이기
+  if (editor && editor._iframe) editor._iframe.style.display = '';
   try {
     const sizeMb = (file.size / 1048576).toFixed(1);
     showLoading("파일 여는 중…", `${file.name} (${sizeMb}MB)`);
@@ -2524,6 +2536,8 @@ bootEditor = async function() {
 
 // 부팅
 bootEditor();
+// 데스크톱이면 검색 패널 자동 열기 (사용자 요청)
+setTimeout(autoOpenSearchOnDesktop, 600);
 </script>
 
 </body>
