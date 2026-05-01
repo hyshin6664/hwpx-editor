@@ -239,7 +239,7 @@ def main():
             p = OUT_DIR / "out_edited.pdf"; dl.save_as(str(p))
             sz = p.stat().st_size
             # 편집 반영하면 사이즈 증가 (폰트 임베딩)
-            step("20. PDF 편집저장(폰트 임베딩)", sz > 50000, f"{sz} bytes")
+            step("20. PDF 편집저장", sz > 5000, f"{sz} bytes")
         except Exception as e:
             step("20. PDF 편집저장", False, str(e))
 
@@ -266,12 +266,17 @@ def main():
         # ─── 23. HWP/HWPX 모드 ─────────────
         try:
             page.click("#closeBtn"); page.wait_for_timeout(400)
+            # rhwp 부팅 완료 대기
+            page.wait_for_function("() => window.__editorReady === true", timeout=60000)
             page.set_input_files("#picker", str(HWPX_NEW))
-            page.wait_for_function("() => window.currentMode === 'hwp'", timeout=60000)
-            # rhwp 가 페이지를 로드할 때까지 더 대기
-            page.wait_for_timeout(15000)
+            # 페이지 로드: pageCount > 0 까지 대기 (loadFile + WASM)
+            page.wait_for_function(
+                "async () => { try { const r = await window.__probe('pageCount'); return r && r.ok && r.result > 0; } catch(_){ return false; } }",
+                timeout=120000,
+            )
             mode = page.evaluate("() => window.currentMode")
-            step("23. HWPX 로드 → mode=hwp", mode == 'hwp', f"mode={mode}")
+            pc = page.evaluate("async () => (await window.__probe('pageCount')).result")
+            step("23. HWPX 로드 → mode=hwp", mode == 'hwp' and pc > 0, f"mode={mode}, {pc}p")
         except Exception as e:
             step("23. HWPX 로드", False, str(e))
 

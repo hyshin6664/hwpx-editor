@@ -819,6 +819,7 @@ async function bootEditor() {
     });
 
     editorReady = true;
+    window.__editorReady = true; // 자체 테스트 노출
     openBtn.disabled = false;
     hideLoading();
     // 자동저장 복구 체크 (rhwp 부팅 후 1회)
@@ -1366,9 +1367,12 @@ function attachPageInteractions(pg) {
     input.placeholder = '입력 후 Enter';
     overlay.appendChild(input);
     input.focus();
+    let finalized = false;
     const finalize = (commit) => {
+      if (finalized) return;
+      finalized = true;
       const text = input.value;
-      input.remove();
+      try { if (input.parentNode) input.parentNode.removeChild(input); } catch (_e) {}
       if (!commit || !text) return;
       // undo snapshot
       const snapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
