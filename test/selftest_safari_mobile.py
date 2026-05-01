@@ -42,11 +42,16 @@ def run(engine_name, launch_fn, viewport, ua=None):
             page.wait_for_function("() => document.getElementById('newBtn') != null", timeout=15000)
             step("페이지 로드", True)
 
-            # 새 docx 만들기
-            page.click("#newBtn"); page.wait_for_timeout(200)
-            page.click('#newMenu .newm-item[data-fmt="docx"]')
+            # 새 docx — 모바일이면 햄버거 통해, 데스크톱이면 직접
+            is_mobile = viewport["width"] < 720
+            if is_mobile:
+                page.click("#hamburgerBtn"); page.wait_for_timeout(300)
+                page.click('#hamDrawer .ham-item[data-act="new-docx"]')
+            else:
+                page.click("#newBtn"); page.wait_for_timeout(200)
+                page.click('#newMenu .newm-item[data-fmt="docx"]')
             page.wait_for_function("() => document.querySelectorAll('#docxHost .docx p[contenteditable]').length > 0", timeout=20000)
-            step("새 docx 마운트", True)
+            step("새 docx 마운트", True, "via 햄버거" if is_mobile else "via newBtn")
 
             # 첫 문단 클릭 + 키보드 입력
             first_p = page.query_selector('#docxHost .docx p[contenteditable]')
@@ -80,10 +85,11 @@ def run(engine_name, launch_fn, viewport, ua=None):
             after2 = page.evaluate("() => document.querySelector('#docxHost .docx p[contenteditable]').textContent")
             step("ASCII 키보드 입력", "hello" in after2, after2[:60])
 
-            # 저장
+            # 저장 — 모바일은 하단 [💾 저장], 데스크톱은 #saveDocxBtn
             try:
+                save_selector = '#mbSaveBtn' if is_mobile else '#saveDocxBtn'
                 with page.expect_download(timeout=20000) as di:
-                    page.click('#saveDocxBtn')
+                    page.click(save_selector)
                 dl = di.value
                 p = OUT_DIR / f"saved_{engine_name}.docx"; dl.save_as(str(p))
                 step("저장 + 다운로드", p.exists() and p.stat().st_size > 1000, f"{p.stat().st_size if p.exists() else 0} bytes")
