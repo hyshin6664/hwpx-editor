@@ -701,21 +701,39 @@ async function mountDocx(file) {
     }
 
     // JSZip 로드 + zip 풀기
-    const JSZip = (await import("https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm")).default;
+    const jszipMod = await import("https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm");
+    const JSZip = jszipMod.default || jszipMod;
+    log("info", `JSZip module: default=${typeof jszipMod.default}, loadAsync=${typeof JSZip.loadAsync}`);
     const zip = await JSZip.loadAsync(buffer);
-    const docXml = await zip.file('word/document.xml').async('string');
+    log("info", `zip 풀기 완료, files: ${Object.keys(zip.files).length}`);
+    const docFile = zip.file('word/document.xml');
+    if (!docFile) throw new Error("word/document.xml 을 찾을 수 없음");
+    const docXml = await docFile.async('string');
+    log("info", `document.xml 로드: ${docXml.length} chars`);
     const dom = new DOMParser().parseFromString(docXml, 'application/xml');
+    const parserErr = dom.getElementsByTagName('parsererror');
+    if (parserErr.length) throw new Error("XML 파싱 오류: " + parserErr[0].textContent.slice(0, 200));
 
     // <w:p> 문단 단위로 <w:t> 텍스트 노드 수집
+    // namespace 무관하게 모든 element 에서 localName='p' 찾기 (안전)
     const paragraphs = [];
-    const wpList = Array.from(dom.getElementsByTagNameNS('*', 'p')).filter(e => e.localName === 'p');
+    const allEls = dom.getElementsByTagName('*');
+    const wpList = [];
+    for (const el of allEls) if (el.localName === 'p') wpList.push(el);
+    log("info", `<w:p> 후보: ${wpList.length}개`);
+
     for (const wp of wpList) {
-      const tList = Array.from(wp.getElementsByTagNameNS('*', 't')).filter(e => e.localName === 't');
+      const tList = [];
+      const wpDescendants = wp.getElementsByTagName('*');
+      for (const desc of wpDescendants) {
+        if (desc.localName === 't') tList.push(desc);
+      }
       const originalText = tList.map(t => t.textContent || '').join('');
       paragraphs.push({ wpEl: wp, tList, originalText, el: null });
     }
+    const nonEmpty = paragraphs.filter(p => p.originalText.trim().length > 0).length;
+    log("info", `DOCX 분석: ${paragraphs.length} 문단 (텍스트 있음: ${nonEmpty})`);
     docxState = { zip, doc: dom, paragraphs };
-    log("info", `DOCX 로드: ${paragraphs.length} 문단`);
 
     // 페이지 같은 흰 박스 + 문단별 textarea
     const page = document.createElement('div');
