@@ -409,6 +409,133 @@
     z-index: 3;
   }
 
+  /* === 검색·바꾸기 패널 (데스크톱 우측 / 모바일 하단 드로어) === */
+  main { transition: padding .22s; }
+  main.search-open { padding-right: 340px; }
+  .search-panel {
+    position: fixed; top: 51px; right: 0; bottom: 0;
+    width: 340px; max-width: 100vw;
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    box-shadow: -4px 0 18px rgba(46,50,66,0.06);
+    z-index: 6;
+    transform: translateX(100%);
+    transition: transform .22s cubic-bezier(.4,0,.2,1);
+    display: flex; flex-direction: column;
+  }
+  .search-panel.open { transform: translateX(0); }
+  .search-head {
+    padding: 12px 14px 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  .search-title {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .search-title h4 { margin: 0; font-size: 14px; font-weight: 700; letter-spacing: -0.01em; }
+  .search-title .close-search {
+    background: transparent; border: none; cursor: pointer;
+    color: var(--text-muted); font-size: 20px; line-height: 1;
+    padding: 4px 8px; border-radius: 7px;
+  }
+  .search-title .close-search:hover { background: var(--surface-2); color: var(--text); }
+  .search-form {
+    display: flex; flex-direction: column; gap: 7px;
+  }
+  .search-input {
+    font: inherit; font-size: 13px;
+    padding: 9px 11px;
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface-2); color: var(--text);
+    transition: border-color .14s, background .14s;
+  }
+  .search-input:focus {
+    outline: none; border-color: var(--primary); background: var(--surface);
+  }
+  .search-actions {
+    display: flex; gap: 6px; margin-top: 2px;
+  }
+  .search-actions .btn {
+    flex: 1; justify-content: center; padding: 8px 6px;
+  }
+  .search-meta {
+    margin-top: 8px; font-size: 11.5px; color: var(--text-soft);
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .search-results {
+    flex: 1; overflow-y: auto; padding: 4px 0;
+  }
+  .search-card {
+    padding: 10px 14px; border-bottom: 1px solid var(--border-soft);
+    cursor: pointer; transition: background .12s;
+  }
+  .search-card:hover { background: var(--surface-2); }
+  .search-card .loc {
+    font-size: 11px; color: var(--primary-deep);
+    font-weight: 600; margin-bottom: 4px;
+    display: flex; justify-content: space-between;
+  }
+  .search-card .snippet {
+    font-size: 12.5px; color: var(--text); line-height: 1.5;
+    word-break: break-word;
+  }
+  .search-card .snippet mark {
+    background: #ffe89a; color: var(--text);
+    padding: 1px 2px; border-radius: 2px;
+  }
+  .search-card .count {
+    color: var(--text-muted); font-weight: 500;
+    background: var(--surface-2); padding: 1px 7px; border-radius: 999px;
+    font-size: 10.5px;
+  }
+  .search-empty {
+    padding: 28px 14px; text-align: center;
+    color: var(--text-muted); font-size: 12.5px;
+  }
+  /* 검색 하이라이트 (본문) */
+  mark.solbox-hl {
+    background: #ffe89a; color: var(--text);
+    padding: 0 1px; border-radius: 2px;
+  }
+  mark.solbox-hl.current {
+    background: #ffb86b; box-shadow: 0 0 0 2px #ff9326;
+  }
+  .pdf-hl {
+    position: absolute;
+    background: rgba(255, 232, 154, 0.5);
+    border: 1px solid #ffd66e;
+    pointer-events: none;
+    border-radius: 2px;
+    z-index: 2;
+  }
+  .pdf-hl.current { background: rgba(255, 184, 107, 0.55); border-color: #ff9326; box-shadow: 0 0 0 2px rgba(255,147,38,0.3); }
+
+  /* 모바일: 하단 드로어 */
+  @media (max-width: 720px) {
+    main.search-open { padding-right: 0; }
+    .search-panel {
+      top: auto; right: 0; bottom: 0; left: 0;
+      width: 100%; max-width: 100%;
+      height: 70vh; border-left: none;
+      border-top: 1px solid var(--border);
+      border-top-left-radius: 18px; border-top-right-radius: 18px;
+      box-shadow: 0 -8px 30px rgba(46,50,66,0.18);
+      transform: translateY(100%);
+    }
+    .search-panel.open { transform: translateY(0); }
+    .search-input { padding: 11px 13px; font-size: 14px; }
+    .search-actions .btn { padding: 10px 6px; font-size: 13px; }
+    .search-card .snippet { font-size: 13px; }
+  }
+  /* 모바일에서 풀러내릴 수 있는 핸들바 */
+  .search-handle {
+    display: none;
+    height: 6px; width: 38px; border-radius: 999px;
+    background: var(--border); margin: 8px auto 4px;
+  }
+  @media (max-width: 720px) { .search-handle { display: block; } }
+
   @media (max-width: 720px) {
     .filename { display:none; }
     .btn { padding: 6px 11px; font-size: 12px; }
@@ -446,6 +573,7 @@
   </div>
 
   <button class="btn" id="saveDocxBtn" disabled style="display:none"><span class="ico">💾</span><span class="label">.docx 받기</span></button>
+  <button class="btn" id="searchToggleBtn" disabled title="검색 (Ctrl+F)"><span class="ico">🔍</span><span class="label">찾기</span></button>
   <input type="file" id="picker" accept=".hwp,.hwpx,.pdf,.docx">
 </div>
 
@@ -494,6 +622,31 @@
        loading="lazy">
   <span class="solbox-credit">CDN &amp; Cloud is by Solbox..</span>
 </footer>
+
+<!-- 검색·바꾸기 패널 -->
+<aside class="search-panel" id="searchPanel" aria-hidden="true">
+  <div class="search-handle"></div>
+  <div class="search-head">
+    <div class="search-title">
+      <h4>🔍 찾기 및 바꾸기</h4>
+      <button class="close-search" id="searchClose" aria-label="닫기">×</button>
+    </div>
+    <div class="search-form">
+      <input type="text" class="search-input" id="searchInput" placeholder="찾을 문구">
+      <input type="text" class="search-input" id="replaceInput" placeholder="바꿀 문구 (선택)">
+      <div class="search-actions">
+        <button class="btn" id="searchPrevBtn" disabled>↑ 이전</button>
+        <button class="btn" id="searchNextBtn" disabled>↓ 다음</button>
+        <button class="btn primary" id="replaceAllBtn" disabled>모두 바꾸기</button>
+      </div>
+      <div class="search-meta">
+        <span id="searchStatus">문구를 입력하세요</span>
+        <span id="searchCount"></span>
+      </div>
+    </div>
+  </div>
+  <div class="search-results" id="searchResults"></div>
+</aside>
 
 <!-- 소식 모달 -->
 <div class="news-overlay hidden" id="newsOverlay">
@@ -1691,6 +1844,360 @@ window.addEventListener("drop", (e) => {
   const f = e.dataTransfer.files && e.dataTransfer.files[0];
   if (f) loadFile(f);
 });
+
+// =============================================================
+// 검색·바꾸기 패널 (모바일 최적화 — 데스크톱 우측 / 모바일 하단)
+// =============================================================
+const searchPanel = document.getElementById('searchPanel');
+const searchToggleBtn = document.getElementById('searchToggleBtn');
+const searchClose = document.getElementById('searchClose');
+const searchInput = document.getElementById('searchInput');
+const replaceInput = document.getElementById('replaceInput');
+const searchPrevBtn = document.getElementById('searchPrevBtn');
+const searchNextBtn = document.getElementById('searchNextBtn');
+const replaceAllBtn = document.getElementById('replaceAllBtn');
+const searchResults = document.getElementById('searchResults');
+const searchStatus = document.getElementById('searchStatus');
+const searchCount = document.getElementById('searchCount');
+
+let searchState = { matches: [], currentIdx: -1, query: "" };
+
+function openSearch() {
+  searchPanel.classList.add('open');
+  searchPanel.setAttribute('aria-hidden', 'false');
+  document.querySelector('main').classList.add('search-open');
+  setTimeout(() => searchInput.focus(), 100);
+}
+function closeSearch() {
+  searchPanel.classList.remove('open');
+  searchPanel.setAttribute('aria-hidden', 'true');
+  document.querySelector('main').classList.remove('search-open');
+  clearAllHighlights();
+}
+searchToggleBtn.addEventListener('click', () => {
+  if (searchPanel.classList.contains('open')) closeSearch();
+  else openSearch();
+});
+searchClose.addEventListener('click', closeSearch);
+window.addEventListener('keydown', (e) => {
+  const isCtrl = e.ctrlKey || e.metaKey;
+  if (isCtrl && (e.key === 'f' || e.key === 'F')) {
+    if (currentMode) { e.preventDefault(); openSearch(); }
+  } else if (e.key === 'Escape' && searchPanel.classList.contains('open')) {
+    closeSearch();
+  }
+});
+
+let _searchDebounce = null;
+searchInput.addEventListener('input', () => {
+  clearTimeout(_searchDebounce);
+  _searchDebounce = setTimeout(performSearch, 250);
+});
+searchInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    if (e.shiftKey) jumpToMatch(-1);
+    else jumpToMatch(+1);
+  }
+});
+searchPrevBtn.addEventListener('click', () => jumpToMatch(-1));
+searchNextBtn.addEventListener('click', () => jumpToMatch(+1));
+replaceAllBtn.addEventListener('click', performReplaceAll);
+
+function clearAllHighlights() {
+  // DOCX/공통: <mark class="solbox-hl"> 풀기
+  document.querySelectorAll('mark.solbox-hl').forEach(m => {
+    const parent = m.parentNode;
+    if (!parent) return;
+    while (m.firstChild) parent.insertBefore(m.firstChild, m);
+    parent.removeChild(m);
+    parent.normalize && parent.normalize();
+  });
+  // PDF: 캔버스 위 .pdf-hl 박스 제거
+  document.querySelectorAll('.pdf-hl').forEach(h => h.remove());
+}
+
+async function performSearch() {
+  const q = searchInput.value;
+  searchState.query = q;
+  searchState.matches = [];
+  searchState.currentIdx = -1;
+  clearAllHighlights();
+  searchResults.innerHTML = '';
+  if (!q) {
+    searchStatus.textContent = "문구를 입력하세요";
+    searchCount.textContent = "";
+    setSearchBtnsEnabled(false);
+    return;
+  }
+  if (!currentMode) {
+    searchStatus.textContent = "먼저 파일을 여세요";
+    return;
+  }
+  searchStatus.textContent = "검색 중…";
+  let matches = [];
+  if (currentMode === 'docx') matches = searchInDocx(q);
+  else if (currentMode === 'pdf') matches = await searchInPdf(q);
+  else if (currentMode === 'hwp') matches = await searchInHwp(q);
+  searchState.matches = matches;
+  renderSearchResults(matches);
+  if (matches.length > 0) {
+    searchStatus.textContent = `${matches.length}곳 발견`;
+    searchCount.textContent = `1 / ${matches.length}`;
+    setSearchBtnsEnabled(true);
+    jumpToMatch(0, true); // 첫 결과로
+  } else {
+    searchStatus.textContent = "결과 없음";
+    searchCount.textContent = "";
+    setSearchBtnsEnabled(false);
+  }
+}
+function setSearchBtnsEnabled(on) {
+  searchPrevBtn.disabled = !on;
+  searchNextBtn.disabled = !on;
+  replaceAllBtn.disabled = !(on && currentMode !== 'pdf'); // PDF 는 일괄 바꾸기 미지원
+}
+
+function renderSearchResults(matches) {
+  if (matches.length === 0) {
+    searchResults.innerHTML = '<div class="search-empty">결과 없음</div>';
+    return;
+  }
+  searchResults.innerHTML = '';
+  matches.slice(0, 200).forEach((m, idx) => {
+    const card = document.createElement('div');
+    card.className = 'search-card';
+    card.dataset.idx = String(idx);
+    card.innerHTML = `
+      <div class="loc"><span>${m.locLabel}</span><span class="count">#${idx + 1}</span></div>
+      <div class="snippet">${m.snippetHtml}</div>
+    `;
+    card.addEventListener('click', () => jumpToMatch(idx, false, true));
+    searchResults.appendChild(card);
+  });
+  if (matches.length > 200) {
+    const more = document.createElement('div');
+    more.className = 'search-empty';
+    more.textContent = `… 외 ${matches.length - 200}곳 더 (검색 패널엔 200개까지 표시)`;
+    searchResults.appendChild(more);
+  }
+}
+
+function jumpToMatch(deltaOrAbs, isAbs, fromCard) {
+  if (searchState.matches.length === 0) return;
+  let next;
+  if (isAbs) next = deltaOrAbs;
+  else if (fromCard) next = deltaOrAbs;
+  else {
+    const cur = searchState.currentIdx >= 0 ? searchState.currentIdx : 0;
+    next = (cur + deltaOrAbs + searchState.matches.length) % searchState.matches.length;
+  }
+  searchState.currentIdx = next;
+  searchCount.textContent = `${next + 1} / ${searchState.matches.length}`;
+  highlightMatch(searchState.matches[next], next);
+}
+
+function highlightMatch(match, idx) {
+  // 이전 current 클래스 제거 (전체 mark 는 유지, current 만 토글)
+  document.querySelectorAll('mark.solbox-hl.current').forEach(m => m.classList.remove('current'));
+  document.querySelectorAll('.pdf-hl.current').forEach(h => h.classList.remove('current'));
+  if (match.scrollEl) {
+    match.scrollEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+  if (match.markEl) match.markEl.classList.add('current');
+}
+
+// === DOCX 검색 ===
+function searchInDocx(q) {
+  if (!docxState) return [];
+  const out = [];
+  // 렌더된 paragraph 내 텍스트 노드 walk
+  docxState.paragraphs.forEach((p, idx) => {
+    if (!p.el) return;
+    const txt = p.el.textContent || '';
+    if (!txt) return;
+    let from = 0;
+    while (true) {
+      const at = txt.indexOf(q, from);
+      if (at < 0) break;
+      // mark 적용
+      const start = Math.max(0, at - 24);
+      const end = Math.min(txt.length, at + q.length + 24);
+      const before = escapeHtml(txt.slice(start, at));
+      const hit = escapeHtml(txt.slice(at, at + q.length));
+      const after = escapeHtml(txt.slice(at + q.length, end));
+      out.push({
+        locLabel: `문단 ${idx + 1}`,
+        snippetHtml: `${start>0?'…':''}${before}<mark>${hit}</mark>${after}${end<txt.length?'…':''}`,
+        scrollEl: p.el,
+        para: p,
+        from: at,
+        to: at + q.length,
+      });
+      from = at + q.length;
+      if (q.length === 0) break;
+    }
+  });
+  // 본문 mark 적용 (모든 문단의 모든 occurrence)
+  docxState.paragraphs.forEach((p) => {
+    if (!p.el) return;
+    if ((p.el.textContent || '').indexOf(q) === -1) return;
+    highlightTextInElement(p.el, q);
+  });
+  // markEl 매핑 (mark 들 순서대로)
+  const allMarks = Array.from(document.querySelectorAll('#docxHost mark.solbox-hl'));
+  out.forEach((m, i) => { if (allMarks[i]) m.markEl = allMarks[i]; });
+  return out;
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+function highlightTextInElement(root, q) {
+  if (!q) return;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode: (n) => {
+      if (n.parentElement && n.parentElement.tagName === 'MARK') return NodeFilter.FILTER_REJECT;
+      return n.nodeValue && n.nodeValue.indexOf(q) >= 0 ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+    }
+  });
+  const nodes = []; let n;
+  while ((n = walker.nextNode())) nodes.push(n);
+  nodes.forEach(node => {
+    const text = node.nodeValue;
+    let from = 0;
+    const frag = document.createDocumentFragment();
+    while (true) {
+      const at = text.indexOf(q, from);
+      if (at < 0) { frag.appendChild(document.createTextNode(text.slice(from))); break; }
+      if (at > from) frag.appendChild(document.createTextNode(text.slice(from, at)));
+      const m = document.createElement('mark');
+      m.className = 'solbox-hl';
+      m.textContent = text.slice(at, at + q.length);
+      frag.appendChild(m);
+      from = at + q.length;
+      if (q.length === 0) break;
+    }
+    node.parentNode.replaceChild(frag, node);
+  });
+}
+
+// === PDF 검색 (PDF.js getTextContent 활용) ===
+async function searchInPdf(q) {
+  if (!pdfState || !pdfState.bytes) return [];
+  const pdfjs = await getPdfjs();
+  const pdfDoc = await pdfjs.getDocument({ data: pdfState.bytes.slice() }).promise;
+  const out = [];
+  for (let i = 1; i <= pdfDoc.numPages; i++) {
+    const page = await pdfDoc.getPage(i);
+    const tc = await page.getTextContent();
+    const items = tc.items;
+    const fullText = items.map(it => it.str).join(' ');
+    let from = 0;
+    while (true) {
+      const at = fullText.indexOf(q, from);
+      if (at < 0) break;
+      const start = Math.max(0, at - 30);
+      const end = Math.min(fullText.length, at + q.length + 30);
+      const snippet = `${start>0?'…':''}${escapeHtml(fullText.slice(start, at))}<mark>${escapeHtml(fullText.slice(at, at+q.length))}</mark>${escapeHtml(fullText.slice(at+q.length, end))}${end<fullText.length?'…':''}`;
+      // 페이지 카드만 클릭 시 해당 캔버스 이동
+      const pgState = pdfState.pages[i-1];
+      out.push({
+        locLabel: `페이지 ${i}`,
+        snippetHtml: snippet,
+        scrollEl: pgState ? pgState.canvas : null,
+        markEl: null,
+      });
+      from = at + q.length;
+      if (q.length === 0) break;
+    }
+  }
+  return out;
+}
+
+// === HWP/HWPX 검색 (rhwp 의 search API 가 없으므로 페이지 SVG 텍스트 기반) ===
+async function searchInHwp(q) {
+  if (!editor) return [];
+  const out = [];
+  try {
+    const total = await editor.pageCount();
+    for (let i = 0; i < total; i++) {
+      const svg = await editor.getPageSvg(i);
+      // SVG 의 <text> 또는 일반 텍스트 노드에서 query 찾기
+      const tmp = document.createElement('div');
+      tmp.innerHTML = svg;
+      const fullText = tmp.textContent || '';
+      let from = 0;
+      while (true) {
+        const at = fullText.indexOf(q, from);
+        if (at < 0) break;
+        const start = Math.max(0, at - 30);
+        const end = Math.min(fullText.length, at + q.length + 30);
+        const snippet = `${start>0?'…':''}${escapeHtml(fullText.slice(start, at))}<mark>${escapeHtml(fullText.slice(at, at+q.length))}</mark>${escapeHtml(fullText.slice(at+q.length, end))}${end<fullText.length?'…':''}`;
+        out.push({
+          locLabel: `페이지 ${i+1}`,
+          snippetHtml: snippet,
+          // hwp iframe 내부 페이지 이동은 어려우니 일단 클릭 시 메시지로 표시
+          scrollEl: null,
+        });
+        from = at + q.length;
+        if (q.length === 0) break;
+      }
+    }
+  } catch (err) {
+    log("warn", "HWP 검색 실패: " + err.message);
+  }
+  return out;
+}
+
+async function performReplaceAll() {
+  const q = searchInput.value;
+  const repl = replaceInput.value;
+  if (!q) return;
+  if (currentMode === 'docx') {
+    const cnt = replaceAllInDocx(q, repl);
+    alert(`${cnt}곳 바꿨습니다`);
+    await performSearch(); // 재검색 (남은 것 확인)
+  } else if (currentMode === 'hwp') {
+    alert("한글 모드의 일괄 바꾸기는 곧 추가됩니다.");
+  } else {
+    alert("PDF 는 일괄 바꾸기를 지원하지 않습니다 (지우개+글씨로 직접 수정).");
+  }
+}
+
+function replaceAllInDocx(q, repl) {
+  if (!docxState) return 0;
+  let count = 0;
+  docxState.paragraphs.forEach((p) => {
+    if (!p.el) return;
+    if ((p.el.textContent || '').indexOf(q) === -1) return;
+    // XML <w:t> 단위에서 치환 — 텍스트 분할 처리
+    const merged = p.tList.map(t => t.textContent || '').join('');
+    if (merged.indexOf(q) === -1) return;
+    const next = merged.split(q).join(repl);
+    const occurrences = (merged.match(new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'g')) || []).length;
+    count += occurrences;
+    // 첫 t 에 통합, 나머지는 비움
+    p.tList[0].textContent = next;
+    for (let i = 1; i < p.tList.length; i++) p.tList[i].textContent = "";
+    // 화면도 갱신
+    p.el.textContent = next;
+    p.el.style.background = '#fffbeb';
+    p.originalText = next;
+  });
+  scheduleAutoSave();
+  return count;
+}
+
+// === 검색 버튼 활성화: 파일 로드되면 ===
+function enableSearchBtn() {
+  searchToggleBtn.disabled = !currentMode;
+}
+const _origSetMode = setMode;
+setMode = function(m) {
+  _origSetMode(m);
+  enableSearchBtn();
+};
 
 // === 업데이트 내역 (소식) ===
 const UPDATE_HISTORY = [
