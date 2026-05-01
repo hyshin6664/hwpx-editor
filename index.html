@@ -2576,21 +2576,55 @@ closeBtn.addEventListener('click', () => {
 });
 
 // =============================================================
-// 음성 입력 (Web Speech API, 한국어)
+// 음성 입력 (Web Speech API, 한국어) — robust 캐럿 보존
 // =============================================================
 const micBtn = document.getElementById('micBtn');
 let recognition = null;
 let recognizing = false;
-let _lastEditTarget = null; // 마이크 버튼 누르기 전 마지막 편집 위치 추적
+let _lastEditTarget = null;
+let _savedRange = null;          // 캐럿 저장 (contenteditable)
+let _savedInputSel = null;       // 캐럿 저장 (INPUT/TEXTAREA): {el, start, end}
+
 function isEditable(el) {
   return el && (el.isContentEditable || el.tagName === 'INPUT' || el.tagName === 'TEXTAREA');
 }
+function isExcluded(el) {
+  return el && (el.id === 'searchInput' || el.id === 'replaceInput');
+}
+
 document.addEventListener('focusin', (e) => {
   const t = e.target;
-  // 검색 입력칸은 제외 (음성을 본문에 넣어야 하니까)
-  if (t && t.id === 'searchInput') return;
-  if (t && t.id === 'replaceInput') return;
+  if (isExcluded(t)) return;
   if (isEditable(t)) _lastEditTarget = t;
+}, true);
+
+// 편집 영역에서 selection/캐럿 변할 때마다 저장
+document.addEventListener('selectionchange', () => {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return;
+  const range = sel.getRangeAt(0);
+  // 편집 영역 내부인 경우만 저장
+  let node = range.commonAncestorContainer;
+  if (node.nodeType === 3) node = node.parentElement;
+  while (node && node !== document.body) {
+    if (node.isContentEditable && !isExcluded(node)) {
+      _savedRange = range.cloneRange();
+      _lastEditTarget = node;
+      return;
+    }
+    node = node.parentElement;
+  }
+});
+document.addEventListener('focusout', (e) => {
+  const t = e.target;
+  if (!isEditable(t) || isExcluded(t)) return;
+  if (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA') {
+    _savedInputSel = {
+      el: t,
+      start: t.selectionStart || 0,
+      end: t.selectionEnd || 0,
+    };
+  }
 }, true);
 
 function setupRecognition() {
@@ -2598,77 +2632,114 @@ function setupRecognition() {
   if (!SpeechRec) return null;
   const r = new SpeechRec();
   r.lang = 'ko-KR';
-  r.interimResults = true;
+  r.interimResults = false; // 최종만 입력 (interim 은 저장 안 함)
   r.continuous = true;
+  r.maxAlternatives = 1;
   return r;
 }
-micBtn.addEventListener('mousedown', (e) => {
-  // 버튼 클릭이 포커스를 훔치지 않게 미리 막음
-  e.preventDefault();
-});
+
+// 마이크 버튼이 포커스 안 훔치게
+micBtn.addEventListener('mousedown', (e) => e.preventDefault());
+micBtn.addEventListener('touchstart', (e) => e.preventDefault());
+
 micBtn.addEventListener('click', () => {
   if (!recognition) recognition = setupRecognition();
   if (!recognition) {
     alert("이 브라우저는 음성 입력을 지원하지 않습니다 (크롬·엣지 권장)");
     return;
   }
-  if (recognizing) {
-    recognition.stop();
-    return;
-  }
-  // 활성 편집 요소: 1) 현재 active, 2) 마지막 추적한 편집 위치
+  if (recognizing) { recognition.stop(); return; }
+
+  // target 결정 (active → savedTarget)
   let target = document.activeElement;
-  if (!isEditable(target) || target.id === 'searchInput' || target.id === 'replaceInput') {
-    target = _lastEditTarget;
-  }
-  if (!isEditable(target)) {
+  if (!isEditable(target) || isExcluded(target)) target = _lastEditTarget;
+  if (!isEditable(target) || isExcluded(target)) {
     alert("음성 입력하려면 편집할 곳(문단·셀)을 먼저 클릭해주세요");
     return;
   }
-  // 클릭으로 포커스 옮기기
-  try { target.focus(); } catch (_e) {}
-  let lastInterim = '';
+
+  // 핸들러
   recognition.onresult = (e) => {
     let final = '';
-    let interim = '';
     for (let i = e.resultIndex; i < e.results.length; i++) {
-      const txt = e.results[i][0].transcript;
-      if (e.results[i].isFinal) final += txt;
-      else interim += txt;
+      if (e.results[i].isFinal) final += e.results[i][0].transcript;
     }
-    if (final) {
-      insertTextAtTarget(target, final);
-      lastInterim = '';
-    }
+    if (!final) return;
+    insertTextRobust(target, final);
   };
   recognition.onstart = () => {
     recognizing = true;
     micBtn.style.background = 'var(--accent-rose)';
     micBtn.style.color = '#fff';
     micBtn.title = '음성 입력 중… 클릭하면 멈춤';
+    log("info", "🎙️ 음성 입력 시작 (한국어)");
   };
   recognition.onend = () => {
     recognizing = false;
     micBtn.style.background = '';
     micBtn.style.color = '';
     micBtn.title = '음성 입력 (한국어)';
+    log("info", "음성 입력 종료");
   };
   recognition.onerror = (e) => {
     log("warn", "음성 인식 오류: " + e.error);
+    if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+      alert("마이크 권한이 거부되었습니다. 주소창 자물쇠 아이콘에서 마이크 허용 후 다시 시도해주세요.");
+    } else if (e.error === 'no-speech') {
+      // 무시 (음성 없음)
+    } else if (e.error === 'audio-capture') {
+      alert("마이크를 찾을 수 없습니다. 마이크 연결 확인 후 다시 시도.");
+    } else if (e.error === 'network') {
+      alert("음성 인식 네트워크 오류");
+    }
   };
-  try { recognition.start(); } catch (e) { log("warn", e.message); }
+  try { recognition.start(); } catch (e) { log("warn", "start 오류: " + e.message); }
 });
-function insertTextAtTarget(target, text) {
+
+// 모든 종류의 편집 대상에 안정적으로 텍스트 삽입
+function insertTextRobust(target, text) {
+  if (!target || !text) return;
+  // 1) INPUT/TEXTAREA
   if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
-    const start = target.selectionStart || target.value.length;
-    const end = target.selectionEnd || target.value.length;
-    target.value = target.value.slice(0, start) + text + target.value.slice(end);
-    target.selectionStart = target.selectionEnd = start + text.length;
+    const sel = (_savedInputSel && _savedInputSel.el === target)
+      ? _savedInputSel
+      : { el: target, start: target.value.length, end: target.value.length };
+    const v = target.value;
+    target.value = v.slice(0, sel.start) + text + v.slice(sel.end);
+    const newPos = sel.start + text.length;
+    target.focus();
+    try { target.setSelectionRange(newPos, newPos); } catch(_) {}
+    _savedInputSel = { el: target, start: newPos, end: newPos };
     target.dispatchEvent(new Event('input', { bubbles: true }));
-  } else if (target.isContentEditable) {
-    document.execCommand('insertText', false, text);
+    return;
+  }
+  // 2) contentEditable
+  if (target.isContentEditable) {
+    target.focus();
+    let range;
+    if (_savedRange && target.contains(_savedRange.commonAncestorContainer)) {
+      range = _savedRange.cloneRange();
+    } else {
+      range = document.createRange();
+      range.selectNodeContents(target);
+      range.collapse(false); // 끝
+    }
+    range.deleteContents();
+    const node = document.createTextNode(text);
+    range.insertNode(node);
+    range.setStartAfter(node);
+    range.setEndAfter(node);
+    range.collapse(true);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    _savedRange = range.cloneRange();
+    target.dispatchEvent(new Event('input', { bubbles: true }));
   }
 }
+
+// 자체 테스트용 노출
+window.__insertTextRobust = insertTextRobust;
 
 // =============================================================
 // PDF 페이지 썸네일 사이드바
