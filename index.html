@@ -261,8 +261,25 @@
     pointer-events: auto;
   }
   .pdf-overlay.tool-pointer { cursor: default; }
+  .pdf-overlay.tool-select { cursor: grab; }
   .pdf-overlay.tool-erase { cursor: cell; }
   .pdf-overlay.tool-text { cursor: text; }
+  .pdf-edit-marker {
+    position: absolute;
+    border: 2px dashed transparent;
+    border-radius: 2px;
+    cursor: move;
+    pointer-events: auto;
+    transition: border-color .12s, background .12s;
+  }
+  .pdf-overlay.tool-select .pdf-edit-marker:hover {
+    border-color: var(--primary);
+    background: rgba(124, 141, 181, 0.1);
+  }
+  .pdf-edit-marker.selected {
+    border-color: var(--accent-rose) !important;
+    background: rgba(214, 179, 182, 0.15) !important;
+  }
 
   .erase-selection {
     position: absolute;
@@ -769,7 +786,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v18<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v19<span class="dot"></span></button>
   </div>
   <span class="filename" id="filenameLabel"></span>
   <span id="wordCount" style="margin-left:8px;font-size:11px;color:var(--text-muted);font-weight:500"></span>
@@ -1330,6 +1347,7 @@ async function mountPdf(file) {
     toolbar.className = 'pdf-toolbar visible';
     toolbar.innerHTML = `
       <button class="tool active" data-tool="pointer">👆 보기</button>
+      <button class="tool" data-tool="select">🖱 선택·이동</button>
       <button class="tool" data-tool="erase">🩹 지우개</button>
       <button class="tool" data-tool="text">✏️ 글씨</button>
       <span class="tool-sep"></span>
@@ -1606,6 +1624,98 @@ function attachPageInteractions(pg) {
     if (e.changedTouches[0]) overlay.dispatchEvent(touchToMouse('mouseup', e.changedTouches[0]));
   });
 
+  // 선택·이동 도구 — 추가된 edit 위에 마커 표시 + 드래그로 이동
+  function rebuildEditMarkers() {
+    overlay.querySelectorAll('.pdf-edit-marker').forEach(m => m.remove());
+    if (pdfState.tool !== 'select') return;
+    pg.edits.forEach((ed, idx) => {
+      if (!ed._displayPx) return;
+      const m = document.createElement('div');
+      m.className = 'pdf-edit-marker';
+      m.dataset.editIdx = String(idx);
+      // 위치 — display px 좌표 → overlay 비율 좌표
+      const r = overlay.getBoundingClientRect();
+      const sx = r.width / pg.canvas.width;
+      const sy = r.height / pg.canvas.height;
+      let x, y, w, h;
+      if (ed.type === 'erase') {
+        x = ed._displayPx.x * sx; y = ed._displayPx.y * sy;
+        w = ed._displayPx.w * sx; h = ed._displayPx.h * sy;
+      } else if (ed.type === 'text') {
+        const tw = ed.text.length * ed._displayPx.fontSize * 0.55; // 대략
+        x = ed._displayPx.cx * sx;
+        y = (ed._displayPx.cy - ed._displayPx.fontSize) * sy;
+        w = tw * sx; h = ed._displayPx.fontSize * sy * 1.4;
+      } else { return; }
+      m.style.left = x + 'px';
+      m.style.top = y + 'px';
+      m.style.width = Math.max(20, w) + 'px';
+      m.style.height = Math.max(20, h) + 'px';
+      overlay.appendChild(m);
+      // 드래그
+      let dragData = null;
+      m.addEventListener('mousedown', (e) => {
+        if (pdfState.tool !== 'select') return;
+        e.preventDefault(); e.stopPropagation();
+        dragData = { startCx: e.clientX, startCy: e.clientY, origLeft: parseFloat(m.style.left), origTop: parseFloat(m.style.top) };
+        document.querySelectorAll('.pdf-edit-marker.selected').forEach(s => s.classList.remove('selected'));
+        m.classList.add('selected');
+      });
+      function onMouseMove(e) {
+        if (!dragData) return;
+        const dx = e.clientX - dragData.startCx;
+        const dy = e.clientY - dragData.startCy;
+        m.style.left = (dragData.origLeft + dx) + 'px';
+        m.style.top = (dragData.origTop + dy) + 'px';
+      }
+      function onMouseUp(e) {
+        if (!dragData) return;
+        const dxPx = (parseFloat(m.style.left) - dragData.origLeft) / sx; // 캔버스 px 변화
+        const dyPx = (parseFloat(m.style.top) - dragData.origTop) / sy;
+        // PDF 좌표 갱신 (PDF 는 bottom-up Y)
+        if (ed.type === 'erase') {
+          ed._displayPx.x += dxPx; ed._displayPx.y += dyPx;
+          ed.x += dxPx / pg.scale;
+          ed.y -= dyPx / pg.scale; // PDF Y 뒤집기
+        } else if (ed.type === 'text') {
+          ed._displayPx.cx += dxPx; ed._displayPx.cy += dyPx;
+          ed.x += dxPx / pg.scale;
+          ed.y -= dyPx / pg.scale;
+        }
+        // 캔버스 다시 그리기 — 모든 edits 재적용
+        // 원본 백업이 없으니 페이지 다시 렌더 + edits 적용 — 단순화: 스킵하고 저장 시 반영만
+        scheduleAutoSave();
+        dragData = null;
+      }
+      window.addEventListener('mousemove', onMouseMove);
+      window.addEventListener('mouseup', onMouseUp);
+      // 터치
+      m.addEventListener('touchstart', (e) => {
+        if (e.touches[0]) {
+          dragData = { startCx: e.touches[0].clientX, startCy: e.touches[0].clientY, origLeft: parseFloat(m.style.left), origTop: parseFloat(m.style.top) };
+          document.querySelectorAll('.pdf-edit-marker.selected').forEach(s => s.classList.remove('selected'));
+          m.classList.add('selected');
+          e.preventDefault();
+        }
+      }, { passive: false });
+      window.addEventListener('touchmove', (e) => {
+        if (!dragData || !e.touches[0]) return;
+        const dx = e.touches[0].clientX - dragData.startCx;
+        const dy = e.touches[0].clientY - dragData.startCy;
+        m.style.left = (dragData.origLeft + dx) + 'px';
+        m.style.top = (dragData.origTop + dy) + 'px';
+      }, { passive: false });
+      window.addEventListener('touchend', onMouseUp);
+    });
+  }
+  // 도구 변경 시 마커 재구성
+  document.addEventListener('click', (e) => {
+    if (e.target && e.target.dataset && e.target.dataset.tool) {
+      setTimeout(rebuildEditMarkers, 50);
+    }
+  });
+  pg._rebuildEditMarkers = rebuildEditMarkers;
+
   // 글씨 입력
   overlay.addEventListener('click', (e) => {
     if (pdfState.tool !== 'text') return;
@@ -1817,6 +1927,95 @@ async function mountDocx(file) {
       docxHost.style.cssText = 'width:100%;height:100%;overflow:auto;background:#525659;padding:20px 0;';
       editorHost.appendChild(docxHost);
     } else { docxHost.innerHTML = ''; docxHost.style.display = ''; }
+
+    // DOCX 편집 툴바 (글씨체·크기·굵기·색)
+    const docxToolbar = document.createElement('div');
+    docxToolbar.id = 'docxToolbar';
+    docxToolbar.style.cssText = 'position:sticky;top:0;z-index:4;background:rgba(255,255,255,0.95);backdrop-filter:blur(10px);border-bottom:1px solid var(--border);padding:8px 14px;display:flex;flex-wrap:wrap;gap:7px;align-items:center;';
+    docxToolbar.innerHTML = `
+      <label style="font-size:11.5px;color:var(--text-soft);font-weight:500;display:flex;align-items:center;gap:5px;">글씨체 <select id="docxFont" style="padding:5px 8px;font-size:12px;border:1px solid var(--border);border-radius:7px;background:var(--surface);color:var(--text);font-family:inherit;min-width:140px"></select></label>
+      <label style="font-size:11.5px;color:var(--text-soft);font-weight:500;display:flex;align-items:center;gap:5px;">크기 <input type="number" id="docxFontSize" value="11" min="6" max="72" step="1" style="width:48px;padding:4px 7px;font-size:12px;border:1px solid var(--border);border-radius:7px;background:var(--surface);color:var(--text)"></label>
+      <button class="tool" id="docxBold" style="border:1px solid var(--border);background:var(--surface);padding:6px 10px;border-radius:8px;font-size:12px;cursor:pointer;font-weight:700"><b>B</b></button>
+      <button class="tool" id="docxItalic" style="border:1px solid var(--border);background:var(--surface);padding:6px 10px;border-radius:8px;font-size:12px;cursor:pointer;font-style:italic"><i>I</i></button>
+      <button class="tool" id="docxUnderline" style="border:1px solid var(--border);background:var(--surface);padding:6px 10px;border-radius:8px;font-size:12px;cursor:pointer;text-decoration:underline">U</button>
+      <label style="font-size:11.5px;color:var(--text-soft);font-weight:500;display:flex;align-items:center;gap:5px;">색 <input type="color" id="docxColor" value="#000000" style="width:28px;height:28px;border-radius:7px;border:1px solid var(--border);cursor:pointer;padding:1px;background:var(--surface)"></label>
+      <span style="color:var(--text-muted);font-size:11px;margin-left:auto;">선택해서 적용 · 시각용 (저장된 .docx 에는 텍스트만 반영)</span>
+    `;
+    docxHost.appendChild(docxToolbar);
+
+    // 무료 한글 글꼴 목록 (Google Fonts 등록 + 시스템)
+    const FREE_KOREAN_FONTS = [
+      { name: '기본', family: '' },
+      { name: 'Pretendard (현대)', family: '"Pretendard","Pretendard Variable",sans-serif' },
+      { name: 'Noto Sans KR (본고딕)', family: '"Noto Sans KR",sans-serif' },
+      { name: 'Noto Serif KR (본명조)', family: '"Noto Serif KR",serif' },
+      { name: '나눔고딕', family: '"Nanum Gothic",sans-serif' },
+      { name: '나눔명조', family: '"Nanum Myeongjo",serif' },
+      { name: '나눔펜글씨', family: '"Nanum Pen Script",cursive' },
+      { name: '나눔붓글씨', family: '"Nanum Brush Script",cursive' },
+      { name: 'Black Han Sans (검은고딕)', family: '"Black Han Sans",sans-serif' },
+      { name: 'Do Hyeon (도현체)', family: '"Do Hyeon",sans-serif' },
+      { name: 'Gowun Dodum (고운돋움)', family: '"Gowun Dodum",sans-serif' },
+      { name: 'Gowun Batang (고운바탕)', family: '"Gowun Batang",serif' },
+      { name: 'Hi Melody', family: '"Hi Melody",cursive' },
+      { name: 'IBM Plex Sans KR', family: '"IBM Plex Sans KR",sans-serif' },
+      { name: 'Jua (주아체)', family: '"Jua",sans-serif' },
+      { name: 'Kirang Haerang (기랑해랑)', family: '"Kirang Haerang",cursive' },
+      { name: 'Single Day', family: '"Single Day",cursive' },
+      { name: 'Stylish', family: '"Stylish",sans-serif' },
+      { name: 'Sunflower', family: '"Sunflower",sans-serif' },
+      { name: 'Yeon Sung (연성체)', family: '"Yeon Sung",cursive' },
+      { name: 'Cute Font', family: '"Cute Font",cursive' },
+      { name: 'Dokdo (독도체)', family: '"Dokdo",cursive' },
+      { name: 'East Sea Dokdo', family: '"East Sea Dokdo",cursive' },
+      { name: 'Gaegu', family: '"Gaegu",cursive' },
+      { name: 'Gamja Flower (감자꽃)', family: '"Gamja Flower",cursive' },
+      { name: 'Gugi (구기체)', family: '"Gugi",cursive' },
+      { name: 'Nanum Gothic Coding', family: '"Nanum Gothic Coding",monospace' },
+      { name: 'Poor Story', family: '"Poor Story",cursive' },
+      { name: '함초롬바탕', family: '"함초롬바탕","HamcoromBatang",serif' },
+      { name: '함초롬돋움', family: '"함초롬돋움","HamcoromDotum",sans-serif' },
+      { name: '맑은 고딕', family: '"Malgun Gothic","맑은 고딕",sans-serif' },
+    ];
+    const fontSelect = document.getElementById('docxFont');
+    FREE_KOREAN_FONTS.forEach(f => {
+      const opt = document.createElement('option');
+      opt.value = f.family;
+      opt.textContent = f.name;
+      opt.style.fontFamily = f.family || 'inherit';
+      fontSelect.appendChild(opt);
+    });
+
+    // 선택 영역에 글꼴 적용 (execCommand) — 시각상 적용. 저장 시 텍스트만 반영.
+    function applyFontToSelection(family) {
+      try { document.execCommand('styleWithCSS', false, true); } catch(_) {}
+      try { document.execCommand('fontName', false, family || 'inherit'); } catch(_) {}
+    }
+    function applyFontSizePx(px) {
+      try { document.execCommand('styleWithCSS', false, true); } catch(_) {}
+      // execCommand fontSize 는 1~7 만 지원 → CSS 직접 적용
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) return;
+      const range = sel.getRangeAt(0);
+      if (range.collapsed) return;
+      const span = document.createElement('span');
+      span.style.fontSize = px + 'px';
+      try { range.surroundContents(span); } catch(_) {
+        // 복합 컨텐츠 — execCommand fallback
+        try { document.execCommand('fontSize', false, '4'); } catch(_) {}
+      }
+    }
+    fontSelect.addEventListener('change', (e) => applyFontToSelection(e.target.value));
+    document.getElementById('docxFontSize').addEventListener('change', (e) => applyFontSizePx(parseInt(e.target.value, 10) || 11));
+    document.getElementById('docxBold').addEventListener('click', () => document.execCommand('bold'));
+    document.getElementById('docxItalic').addEventListener('click', () => document.execCommand('italic'));
+    document.getElementById('docxUnderline').addEventListener('click', () => document.execCommand('underline'));
+    document.getElementById('docxColor').addEventListener('change', (e) => {
+      try { document.execCommand('styleWithCSS', false, true); } catch(_) {}
+      document.execCommand('foreColor', false, e.target.value);
+    });
+    // 모바일은 툴바 숨김 (공간 절약 — 모바일은 시스템 키보드 도구 사용)
+    if (window.innerWidth <= 720) docxToolbar.style.display = 'none';
 
     // JSZip 로 XML 모델 보관 (저장용)
     const jszipMod = await import("https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm");
@@ -2056,7 +2255,7 @@ savePdfBtn.addEventListener("click", async () => {
       '</style></head><body>',
       ...svgs.map(s => `<div class="page">${s}</div>`),
       '<div style="position:fixed;right:8px;bottom:4px;font-size:8px;color:#cccccc;letter-spacing:.02em;">CDN &amp; Cloud is by Solbox..</div>',
-      '<scr' + 'ipt>window.addEventListener("load",function(){setTimeout(function(){window.print();},300);});</scr' + 'ipt>',
+      '<scr' + 'ipt>window.addEventListener("load",function(){setTimeout(function(){window.print();setTimeout(function(){window.close();},800);},300);});</scr' + 'ipt>',
       "</body></html>",
     ].join("");
 
@@ -2521,6 +2720,7 @@ setMode = function(m) {
 
 // === 업데이트 내역 (소식) ===
 const UPDATE_HISTORY = [
+  { version: "v19", date: "2026-05-02", desc: "📝 워드 글씨체 변경 도구 + 무료 한글 글꼴 30+ 등록 (Google Fonts) · 📷 OCR → 워드(.docx) 자동 변환 (페이지 이미지 + 추출 글자, 표·그림 보존) · 🖱 PDF 편집 글씨/지우개 마우스로 위치 이동 · 🪟 PDF 인쇄 후 새 탭 자동 닫기" },
   { version: "v18", date: "2026-05-02", desc: "🎙️ 음성 우하단 FAB(펄스 빨강) + 실시간 인식(interim) + 미리보기 말풍선 · 📱 모바일 화면 자동 맞춤 (작은 폰 자동축소, 태블릿 좌우 스크롤) · PDF 썸네일 자동 숨김" },
   { version: "v17", date: "2026-05-02", desc: "🍎 맥·아이폰(Safari) 텍스트 입력 안정화 — 16px 자동확대 방지 · -webkit-user-select 보장 · contenteditable iOS 호환 · 자동대문자/자동수정 활성" },
   { version: "v16", date: "2026-05-02", desc: "📱 모바일 UX 전면 개편 — 하단 액션 바(엄지존), 햄버거 드로어(보조 메뉴), 44px+ 터치 타겟, 단일 손 사용 최적화" },
@@ -2799,14 +2999,13 @@ printBtn.addEventListener('click', async () => {
   printBtn.innerHTML = '<span class="ico">⏳</span><span class="label">준비 중…</span>';
   try {
     if (currentMode === 'pdf') {
-      // PDF.js 캔버스를 새 창에 모아 인쇄
       const html = ['<!DOCTYPE html><html><head><meta charset="utf-8"><title>',setBaseName(),'</title>',
         '<style>@page{size:A4;margin:0}body{margin:0}img{display:block;max-width:100%;page-break-after:always}.credit{position:fixed;right:8mm;bottom:6mm;font-size:7pt;color:#ccc}</style></head><body>'];
       pdfState.pages.forEach(p => {
         html.push('<img src="'+p.canvas.toDataURL('image/png')+'">');
       });
       html.push('<div class="credit">CDN &amp; Cloud is by Solbox..</div>');
-      html.push('<scr'+'ipt>window.onload=function(){setTimeout(function(){window.print()},300)}</scr'+'ipt></body></html>');
+      html.push('<scr'+'ipt>window.onload=function(){setTimeout(function(){window.print();setTimeout(function(){window.close();},800);},300)}</scr'+'ipt></body></html>');
       const w = window.open('', '_blank');
       w.document.open(); w.document.write(html.join('')); w.document.close();
     } else if (currentMode === 'docx') {
@@ -3158,7 +3357,7 @@ let _tesseractMod = null;
 ocrBtn.addEventListener('click', async () => {
   if (currentMode !== 'pdf') return alert("OCR 은 현재 PDF 모드에서만 동작합니다");
   if (!pdfState || !pdfState.pages || pdfState.pages.length === 0) return;
-  if (!confirm("OCR 라이브러리(약 10MB) 다운로드 후 모든 페이지의 글자를 인식합니다. 진행할까요?")) return;
+  if (!confirm("OCR 라이브러리(약 10MB) 다운로드 후 모든 페이지를 인식해 워드(.docx) 로 변환합니다 (페이지 이미지 + 추출된 글자 모두 포함). 진행할까요?")) return;
   const orig = ocrBtn.innerHTML;
   ocrBtn.disabled = true;
   ocrBtn.innerHTML = '<span class="ico">⏳</span><span class="label">OCR 중…</span>';
@@ -3167,26 +3366,66 @@ ocrBtn.addEventListener('click', async () => {
     if (!_tesseractMod) {
       _tesseractMod = await import("https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/+esm");
     }
-    showLoading("OCR 진행 중…", "페이지마다 5~15초 걸립니다");
-    const ocrResults = [];
     const Tesseract = _tesseractMod.default || _tesseractMod;
-    for (let i = 0; i < pdfState.pages.length; i++) {
+    const totalPages = pdfState.pages.length;
+    const pageData = []; // { imgBlob, imgWH, text }
+    for (let i = 0; i < totalPages; i++) {
       const pg = pdfState.pages[i];
-      showLoading(`OCR 진행 중…`, `${i + 1} / ${pdfState.pages.length} 페이지`);
+      showLoading(`OCR 진행 중…`, `${i + 1} / ${totalPages} 페이지 인식`);
       const dataUrl = pg.canvas.toDataURL('image/png');
       const result = await Tesseract.recognize(dataUrl, 'kor+eng');
-      ocrResults.push({ page: i + 1, text: result.data.text });
+      const imgBlob = await (await fetch(dataUrl)).blob();
+      const imgBuf = await imgBlob.arrayBuffer();
+      pageData.push({
+        imgBuf,
+        width: pg.canvas.width, height: pg.canvas.height,
+        text: result.data.text || ''
+      });
     }
+
+    showLoading("워드 문서 만드는 중…", `${totalPages} 페이지 → .docx`);
+    // docx 라이브러리로 페이지마다 [이미지 + OCR 텍스트] 구성
+    const docxLib = await import("https://cdn.jsdelivr.net/npm/docx@9.6.1/+esm");
+    const { Document, Packer, Paragraph, TextRun, ImageRun, PageBreak } = docxLib;
+    const sectionChildren = [];
+    pageData.forEach((p, idx) => {
+      // A4 페이지 가로 (포인트 96 dpi → docx EMU). 단순화: 600 픽셀로 스케일
+      const targetW = 600;
+      const ratio = targetW / p.width;
+      const targetH = Math.round(p.height * ratio);
+      // 이미지
+      sectionChildren.push(new Paragraph({
+        children: [new ImageRun({
+          data: p.imgBuf,
+          transformation: { width: targetW, height: targetH },
+        })],
+      }));
+      // 추출 텍스트
+      const lines = (p.text || '').split(/\r?\n/).filter(l => l.trim());
+      lines.forEach(line => sectionChildren.push(new Paragraph({ children: [new TextRun(line)] })));
+      // 페이지 구분
+      if (idx < pageData.length - 1) {
+        sectionChildren.push(new Paragraph({ children: [new PageBreak()] }));
+      }
+    });
+    const doc = new Document({ sections: [{ properties: {}, children: sectionChildren }] });
+    const blob = await Packer.toBlob(doc);
+
     hideLoading();
-    // OCR 결과를 텍스트 파일로 다운로드 + 콘솔 표시
-    const txt = ocrResults.map(r => `=== 페이지 ${r.page} ===\n${r.text}\n`).join('\n');
-    const blob = new Blob([txt], { type: 'text/plain;charset=utf-8' });
-    downloadBytes(blob, setBaseName() + "_OCR.txt", "text/plain;charset=utf-8");
-    alert(`OCR 완료! ${pdfState.pages.length}페이지 인식 결과를 .txt 로 받았습니다.`);
+    // 다운로드 + 즉시 워드 모드로 띄움
+    const fname = setBaseName() + "_OCR.docx";
+    downloadBytes(blob, fname, blob.type || 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    // 자동으로 워드 모드 마운트
+    const file = new File([blob], fname, { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+    showLoading("워드 모드로 띄우는 중…", "페이지 이미지 + 추출 글자가 함께 표시됩니다");
+    setTimeout(async () => {
+      try { await mountDocx(file); } catch(_e) {}
+      hideLoading();
+    }, 300);
   } catch (err) {
     hideLoading();
     console.error(err);
-    alert("OCR 실패: " + (err && err.message ? err.message : err));
+    alert("OCR → 워드 변환 실패: " + (err && err.message ? err.message : err));
   } finally {
     ocrBtn.innerHTML = orig;
     ocrBtn.disabled = false;
