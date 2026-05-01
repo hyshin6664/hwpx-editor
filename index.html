@@ -105,11 +105,17 @@
 
   footer {
     flex: 0 0 auto;
+    position: relative;
     text-align: center; padding: 8px;
     color: #94a3b8; font-size: 11px;
     border-top: 1px solid #e5e7eb; background: #fafafa;
   }
   footer a { color:#6b7280; }
+  .solbox-credit {
+    position: absolute; right: 10px; bottom: 4px;
+    font-size: 9.5px; color: #c1c5cc; letter-spacing: 0.02em;
+    font-weight: 400;
+  }
 
   @media (max-width: 720px) {
     .filename { display:none; }
@@ -185,6 +191,7 @@
   100% 클라이언트 처리 · 광고 없음 · 추적 없음 ·
   <a href="https://github.com/hyshin6664/hwpx-editor" target="_blank" rel="noopener">GitHub</a> ·
   엔진 <a href="https://github.com/edwardkim/rhwp" target="_blank" rel="noopener">rhwp</a> (MIT)
+  <span class="solbox-credit">CDN &amp; Cloud is by Solbox..</span>
 </footer>
 
 <script type="module">
@@ -567,9 +574,10 @@ savePdfBtn.addEventListener("click", async () => {
       '.page:last-child { page-break-after: auto; }',
       '.page svg { display:block; max-width:100%; height:auto; }',
       '@media screen { body { background:#525659; padding:20px; } .page { background:#fff; box-shadow:0 2px 8px rgba(0,0,0,.4); margin:0 auto 20px; } }',
-      '@media print { body { background:#fff; padding:0; } .page { box-shadow:none; margin:0; } }',
+      '@media print { body { background:#fff; padding:0; } .page { box-shadow:none; margin:0; } @page { size: A4; margin:0; } }',
       '</style></head><body>',
       ...svgs.map(s => `<div class="page">${s}</div>`),
+      '<div style="position:fixed;right:8px;bottom:4px;font-size:8px;color:#cccccc;letter-spacing:.02em;">CDN &amp; Cloud is by Solbox..</div>',
       '<scr' + 'ipt>window.addEventListener("load",function(){setTimeout(function(){window.print();},300);});</scr' + 'ipt>',
       "</body></html>",
     ].join("");
