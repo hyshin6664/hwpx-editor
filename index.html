@@ -538,16 +538,128 @@
   }
   @media (max-width: 720px) { .search-handle { display: block; } }
 
+  /* ====== 모바일 — UX 개선 (≤720px) ======
+     - 상단 바: 컴팩트, 핵심만 (브랜드 + 햄버거 + 검색)
+     - 하단 바: 주 액션 (열기·저장·인쇄·닫기) — 엄지로 닿는 위치
+     - 햄버거 드로어: 보조 (음성·OCR·일괄·새문서·버전·사이드 작업)
+     - 터치 타겟 최소 44×44 */
   @media (max-width: 720px) {
-    .filename { display:none; }
-    .btn { padding: 6px 11px; font-size: 12px; }
+    body { padding-bottom: 64px; } /* 하단바 공간 */
+    .filename { font-size: 11px; max-width: 130px; padding: 3px 9px; }
     .brand .sub { display: none; }
+    .appbar {
+      padding: 8px 10px; gap: 6px;
+      position: sticky; top: 0; z-index: 20;
+    }
+    /* 데스크톱 전용 버튼 그룹 — 햄버거 안으로 */
+    .appbar .group:not(.mobile-keep) { display: none; }
+    .appbar .sep { display: none; }
+    .appbar > .btn:not(#searchToggleBtn):not(#hamburgerBtn) { display: none; }
+    /* 햄버거 + 검색은 우측 상단 */
+    #hamburgerBtn, #searchToggleBtn {
+      width: 44px; height: 44px;
+      padding: 0; justify-content: center;
+      font-size: 18px; border-radius: 12px;
+    }
+    #hamburgerBtn .label, #searchToggleBtn .label { display: none; }
+    #wordCount { display: none; }
+
+    /* 하단 액션 바 (모바일 전용) */
+    .mobile-bottom-bar {
+      display: flex !important;
+    }
+
+    /* 환영 화면 카드 더 컴팩트 */
+    .center { padding: 32px 22px 26px; }
+    .center h2 { font-size: 19px; }
+    .drop { padding: 30px 18px; }
+    .drop .ico { font-size: 30px; }
+
+    /* 검색 입력 더 큼 (터치) */
+    .search-input { padding: 12px 14px; font-size: 14px; min-height: 44px; }
+    .search-actions .btn { min-height: 44px; padding: 11px 6px; font-size: 13px; }
+    .search-card { padding: 12px 16px; min-height: 44px; }
   }
   @media (max-width: 480px) {
-    .sep { display:none; }
-    .appbar { padding: 8px 12px; gap:5px; }
-    .btn .label { display:none; }
+    .brand .name { font-size: 13px; }
+    .filename { max-width: 100px; }
   }
+
+  /* 하단 액션 바 — 모바일 전용 (데스크톱에선 숨김) */
+  .mobile-bottom-bar {
+    display: none;
+    position: fixed; bottom: 0; left: 0; right: 0;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    box-shadow: 0 -2px 12px rgba(46, 50, 66, 0.08);
+    padding: 6px 8px env(safe-area-inset-bottom, 8px);
+    justify-content: space-around;
+    align-items: center;
+    z-index: 15;
+    backdrop-filter: blur(10px);
+  }
+  .mobile-bottom-bar .mb-btn {
+    flex: 1; min-height: 50px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    border: none; background: transparent;
+    color: var(--text-soft);
+    font-size: 10.5px; font-weight: 600; cursor: pointer;
+    border-radius: 10px;
+    transition: background .12s;
+    gap: 3px;
+    padding: 6px 4px;
+  }
+  .mobile-bottom-bar .mb-btn .ico { font-size: 22px; line-height: 1; }
+  .mobile-bottom-bar .mb-btn:hover, .mobile-bottom-bar .mb-btn:active {
+    background: var(--primary-soft); color: var(--primary-deep);
+  }
+  .mobile-bottom-bar .mb-btn:disabled { opacity: 0.35; }
+
+  /* 햄버거 드로어 (모바일 전용) */
+  .ham-drawer {
+    position: fixed; top: 0; right: 0; bottom: 0;
+    width: 280px; max-width: 80vw;
+    background: var(--surface);
+    box-shadow: -4px 0 24px rgba(46, 50, 66, 0.18);
+    z-index: 30;
+    transform: translateX(100%);
+    transition: transform .22s cubic-bezier(.4,0,.2,1);
+    display: flex; flex-direction: column;
+  }
+  .ham-drawer.open { transform: translateX(0); }
+  .ham-drawer .ham-head {
+    padding: 16px 18px 12px;
+    border-bottom: 1px solid var(--border);
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .ham-drawer .ham-head h4 { margin: 0; font-size: 15px; font-weight: 700; }
+  .ham-drawer .ham-close {
+    background: transparent; border: none; cursor: pointer;
+    color: var(--text-muted); font-size: 22px; padding: 4px 8px;
+    border-radius: 7px;
+  }
+  .ham-drawer .ham-list {
+    padding: 8px 0; overflow-y: auto;
+  }
+  .ham-drawer .ham-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 18px; min-height: 48px;
+    border: none; background: transparent;
+    width: 100%; text-align: left;
+    cursor: pointer; font: inherit; font-size: 14px;
+    color: var(--text); font-weight: 500;
+  }
+  .ham-drawer .ham-item:hover, .ham-drawer .ham-item:active {
+    background: var(--primary-soft);
+  }
+  .ham-drawer .ham-item:disabled { opacity: 0.35; cursor: not-allowed; }
+  .ham-drawer .ham-item .ico { font-size: 18px; width: 22px; text-align: center; }
+  .ham-overlay {
+    position: fixed; inset: 0; background: rgba(46,50,66,0.4);
+    z-index: 25; opacity: 0; pointer-events: none;
+    transition: opacity .2s;
+  }
+  .ham-overlay.open { opacity: 1; pointer-events: auto; }
 </style>
 </head>
 <body>
@@ -589,8 +701,35 @@
   <button class="btn" id="ocrBtn" disabled title="OCR (이미지에서 글자 추출)"><span class="ico">📷</span><span class="label">OCR</span></button>
   <button class="btn" id="mergeBtn" disabled title="명단으로 양식 일괄 만들기 (Mail Merge)"><span class="ico">📨</span><span class="label">일괄</span></button>
   <button class="btn" id="searchToggleBtn" disabled title="검색 (Ctrl+F)"><span class="ico">🔍</span><span class="label">찾기</span></button>
+  <button class="btn" id="hamburgerBtn" title="더보기" aria-label="메뉴"><span class="ico">≡</span><span class="label">메뉴</span></button>
   <input type="file" id="picker" accept=".hwp,.hwpx,.pdf,.docx">
 </div>
+
+<!-- 모바일 하단 액션 바 (≤720px 에서만 표시) -->
+<nav class="mobile-bottom-bar" id="mobileBottomBar" aria-label="하단 액션">
+  <button class="mb-btn" id="mbOpenBtn" title="파일 열기"><span class="ico">📁</span>열기</button>
+  <button class="mb-btn" id="mbSaveBtn" disabled title="저장"><span class="ico">💾</span>저장</button>
+  <button class="mb-btn" id="mbPrintBtn" disabled title="인쇄"><span class="ico">🖨️</span>인쇄</button>
+  <button class="mb-btn" id="mbCloseBtn" disabled title="닫기"><span class="ico">✕</span>닫기</button>
+</nav>
+
+<!-- 햄버거 드로어 -->
+<div class="ham-overlay" id="hamOverlay"></div>
+<aside class="ham-drawer" id="hamDrawer" aria-hidden="true">
+  <div class="ham-head">
+    <h4>메뉴</h4>
+    <button class="ham-close" id="hamCloseBtn" aria-label="닫기">×</button>
+  </div>
+  <div class="ham-list">
+    <button class="ham-item" data-act="new-docx"><span class="ico">📝</span>새 워드 (.docx)</button>
+    <button class="ham-item" data-act="new-hwpx"><span class="ico">📄</span>새 한글 (.hwpx)</button>
+    <button class="ham-item" data-act="mic"><span class="ico">🎙️</span>음성 입력</button>
+    <button class="ham-item" data-act="ocr"><span class="ico">📷</span>OCR (글자 추출)</button>
+    <button class="ham-item" data-act="merge"><span class="ico">📨</span>양식 일괄 만들기</button>
+    <button class="ham-item" data-act="ver"><span class="ico">ⓘ</span>업데이트 내역</button>
+    <button class="ham-item" data-act="github"><span class="ico">🐙</span>GitHub 소스</button>
+  </div>
+</aside>
 
 <main>
   <div id="editorHost"></div>
