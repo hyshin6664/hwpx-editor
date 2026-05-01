@@ -538,6 +538,49 @@
   }
   @media (max-width: 720px) { .search-handle { display: block; } }
 
+  /* ====== 음성 FAB (우하단 플로팅) ====== */
+  .voice-fab {
+    position: fixed; right: 20px; bottom: 84px; /* 모바일 하단바 위 */
+    width: 56px; height: 56px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--primary), var(--primary-deep));
+    border: none; color: #fff;
+    box-shadow: 0 4px 16px rgba(124, 141, 181, 0.35);
+    cursor: pointer; z-index: 18;
+    display: none; align-items: center; justify-content: center;
+    font-size: 22px; font-weight: 600;
+    transition: all .18s;
+  }
+  .voice-fab.visible { display: flex; }
+  .voice-fab:hover { transform: scale(1.05); box-shadow: 0 6px 22px rgba(124, 141, 181, 0.5); }
+  .voice-fab:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+  .voice-fab.recording {
+    background: linear-gradient(135deg, #ff5f5f, #d63333);
+    animation: voicePulse 1.4s ease-in-out infinite;
+  }
+  @keyframes voicePulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(214, 51, 51, 0.55); }
+    50%      { box-shadow: 0 0 0 16px rgba(214, 51, 51, 0); }
+  }
+  .voice-bubble {
+    position: fixed; right: 20px; bottom: 152px;
+    max-width: 280px; padding: 11px 14px;
+    background: #fff; color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    box-shadow: 0 6px 20px rgba(46,50,66,0.18);
+    font-size: 13px; line-height: 1.5;
+    z-index: 19;
+    display: none;
+  }
+  .voice-bubble.visible { display: block; }
+  .voice-bubble .label { font-size: 10.5px; color: var(--text-muted); margin-bottom: 4px; font-weight:600; letter-spacing:0.02em; }
+  .voice-bubble .final { color: var(--text); }
+  .voice-bubble .interim { color: var(--text-muted); font-style: italic; }
+  @media (min-width: 721px) {
+    .voice-fab { bottom: 28px; }
+    .voice-bubble { bottom: 96px; }
+  }
+
   /* ====== iOS Safari / 모바일 텍스트 입력 안정화 ======
      - 16px 이상 강제 → iOS auto-zoom 방지
      - -webkit-user-select: text → iOS 텍스트 선택·편집 가능
@@ -553,6 +596,22 @@
   input, textarea, [contenteditable] {
     -webkit-appearance: none;
   }
+  /* 모바일 화면 자동 맞춤 — DOCX/PDF */
+  @media (max-width: 720px) {
+    /* PDF: 썸네일 사이드바 숨김 + 캔버스 100% 폭 */
+    #pdfThumbs { display: none !important; }
+    #pdfHost[data-has-thumbs] { padding-left: 0 !important; }
+    #pdfHost { padding-left: 0 !important; }
+    #pdfHost canvas { width: 100% !important; height: auto !important; }
+    /* DOCX 태블릿/큰 폰: 좌우 스크롤 */
+    #docxHost { overflow-x: auto !important; padding: 12px 8px; }
+    #docxHost .docx { transform-origin: top left; }
+  }
+  @media (max-width: 480px) {
+    /* 작은 폰: scale 적용 (JS 가 동적 계산), 좌우 스크롤 X */
+    #docxHost { overflow-x: hidden !important; }
+  }
+
   /* 모바일 — 폰트 16px 이상 강제 (iOS 자동 줌 방지) */
   @media (max-width: 720px) {
     .search-input,
@@ -710,7 +769,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v17<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v18<span class="dot"></span></button>
   </div>
   <span class="filename" id="filenameLabel"></span>
   <span id="wordCount" style="margin-left:8px;font-size:11px;color:var(--text-muted);font-weight:500"></span>
@@ -751,6 +810,13 @@
   <button class="mb-btn" id="mbPrintBtn" disabled title="인쇄"><span class="ico">🖨️</span>인쇄</button>
   <button class="mb-btn" id="mbCloseBtn" disabled title="닫기"><span class="ico">✕</span>닫기</button>
 </nav>
+
+<!-- 음성 FAB + 미리보기 말풍선 -->
+<div class="voice-bubble" id="voiceBubble" aria-live="polite">
+  <div class="label">🎙️ 듣고 있어요…</div>
+  <div><span class="final" id="voiceFinal"></span> <span class="interim" id="voiceInterim"></span></div>
+</div>
+<button class="voice-fab" id="voiceFab" title="음성 입력 (한국어)" aria-label="음성 녹음 시작/정지">🎙️</button>
 
 <!-- 햄버거 드로어 -->
 <div class="ham-overlay" id="hamOverlay"></div>
@@ -1821,6 +1887,8 @@ async function mountDocx(file) {
     savePdfBtn.disabled = false;
     hideWelcome();
     hideLoading();
+    // 모바일 화면 맞춤
+    setTimeout(() => { try { window.__fitDocxToViewport && window.__fitDocxToViewport(); } catch(_){} }, 100);
   } catch (err) {
     hideLoading();
     log("error", "DOCX 열기 실패: " + (err && err.message ? err.message : err));
@@ -2443,6 +2511,7 @@ setMode = function(m) {
 
 // === 업데이트 내역 (소식) ===
 const UPDATE_HISTORY = [
+  { version: "v18", date: "2026-05-02", desc: "🎙️ 음성 우하단 FAB(펄스 빨강) + 실시간 인식(interim) + 미리보기 말풍선 · 📱 모바일 화면 자동 맞춤 (작은 폰 자동축소, 태블릿 좌우 스크롤) · PDF 썸네일 자동 숨김" },
   { version: "v17", date: "2026-05-02", desc: "🍎 맥·아이폰(Safari) 텍스트 입력 안정화 — 16px 자동확대 방지 · -webkit-user-select 보장 · contenteditable iOS 호환 · 자동대문자/자동수정 활성" },
   { version: "v16", date: "2026-05-02", desc: "📱 모바일 UX 전면 개편 — 하단 액션 바(엄지존), 햄버거 드로어(보조 메뉴), 44px+ 터치 타겟, 단일 손 사용 최적화" },
   { version: "v15", date: "2026-05-02", desc: "음성 입력 robust 동작 (Selection API 기반 캐럿 정확 보존, 에러별 안내) · 종합 자체 테스트 50+ 항목으로 확장 · 안정성 강화" },
@@ -2824,10 +2893,24 @@ function setupRecognition() {
   if (!SpeechRec) return null;
   const r = new SpeechRec();
   r.lang = 'ko-KR';
-  r.interimResults = false; // 최종만 입력 (interim 은 저장 안 함)
+  r.interimResults = true;  // 실시간 — 발화 중간 결과도 받음
   r.continuous = true;
   r.maxAlternatives = 1;
   return r;
+}
+
+// 음성 미리보기 말풍선
+const voiceBubble = document.getElementById('voiceBubble');
+const voiceFinalEl = document.getElementById('voiceFinal');
+const voiceInterimEl = document.getElementById('voiceInterim');
+function showVoiceBubble(finalText, interimText) {
+  voiceFinalEl.textContent = finalText || '';
+  voiceInterimEl.textContent = interimText || '';
+  voiceBubble.classList.add('visible');
+}
+function hideVoiceBubble() {
+  voiceBubble.classList.remove('visible');
+  voiceFinalEl.textContent = ''; voiceInterimEl.textContent = '';
 }
 
 // 마이크 버튼이 포커스 안 훔치게
@@ -2850,27 +2933,40 @@ micBtn.addEventListener('click', () => {
     return;
   }
 
-  // 핸들러
+  // 핸들러 — 실시간 (interim) + 최종 (final)
+  let bubbleTimer = null;
   recognition.onresult = (e) => {
     let final = '';
+    let interim = '';
     for (let i = e.resultIndex; i < e.results.length; i++) {
-      if (e.results[i].isFinal) final += e.results[i][0].transcript;
+      const txt = e.results[i][0].transcript;
+      if (e.results[i].isFinal) final += txt;
+      else interim += txt;
     }
-    if (!final) return;
-    insertTextRobust(target, final);
+    // 미리보기 말풍선
+    if (interim || final) showVoiceBubble(final, interim);
+    // 최종이 들어오면 즉시 본문에 삽입
+    if (final) {
+      insertTextRobust(target, final);
+    }
+    // 활동 후 4초 동안 더 발화 없으면 미리보기 자동 숨김
+    clearTimeout(bubbleTimer);
+    bubbleTimer = setTimeout(hideVoiceBubble, 4000);
   };
   recognition.onstart = () => {
     recognizing = true;
-    micBtn.style.background = 'var(--accent-rose)';
-    micBtn.style.color = '#fff';
+    micBtn.style.background = 'var(--accent-rose)'; micBtn.style.color = '#fff';
     micBtn.title = '음성 입력 중… 클릭하면 멈춤';
-    log("info", "🎙️ 음성 입력 시작 (한국어)");
+    voiceFab.classList.add('recording');
+    showVoiceBubble('', '듣고 있어요…');
+    log("info", "🎙️ 음성 입력 시작 (한국어, 실시간)");
   };
   recognition.onend = () => {
     recognizing = false;
-    micBtn.style.background = '';
-    micBtn.style.color = '';
+    micBtn.style.background = ''; micBtn.style.color = '';
     micBtn.title = '음성 입력 (한국어)';
+    voiceFab.classList.remove('recording');
+    setTimeout(hideVoiceBubble, 800);
     log("info", "음성 입력 종료");
   };
   recognition.onerror = (e) => {
@@ -2932,6 +3028,70 @@ function insertTextRobust(target, text) {
 
 // 자체 테스트용 노출
 window.__insertTextRobust = insertTextRobust;
+
+// =============================================================
+// 음성 FAB (우하단 플로팅 버튼) — 모바일·데스크톱 공통
+// =============================================================
+const voiceFab = document.getElementById('voiceFab');
+voiceFab.addEventListener('mousedown', (e) => e.preventDefault());
+voiceFab.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false });
+voiceFab.addEventListener('click', () => {
+  // 동일 로직 재사용
+  micBtn.click();
+});
+// 모드 있을 때만 FAB 표시
+function syncVoiceFabVisibility() {
+  voiceFab.classList.toggle('visible', !!currentMode);
+}
+const _origSetModeFab = setMode;
+setMode = function(m) {
+  _origSetModeFab(m);
+  syncVoiceFabVisibility();
+};
+syncVoiceFabVisibility();
+
+// =============================================================
+// DOCX 모바일 화면 자동 맞춤 (≤480px → scale, 481~720 → 좌우 스크롤)
+// =============================================================
+function fitDocxToViewport() {
+  const docxRoot = document.querySelector('#docxHost .docx');
+  if (!docxRoot) return;
+  const host = document.getElementById('docxHost');
+  if (!host) return;
+  // 작은 폰 (≤480px) — scale 적용
+  if (window.innerWidth <= 480) {
+    // 현재 transform 제거하고 자연 폭 측정
+    docxRoot.style.transform = '';
+    docxRoot.style.width = '';
+    docxRoot.style.height = '';
+    // 첫 section 의 자연 폭
+    const firstChild = docxRoot.querySelector('section') || docxRoot.firstElementChild;
+    if (!firstChild) return;
+    const naturalW = firstChild.offsetWidth;
+    if (naturalW <= 0) return;
+    const containerW = host.clientWidth - 8;
+    if (naturalW > containerW) {
+      const scale = containerW / naturalW;
+      docxRoot.style.transformOrigin = 'top left';
+      docxRoot.style.transform = `scale(${scale})`;
+      docxRoot.style.width = naturalW + 'px';
+      const naturalH = docxRoot.scrollHeight;
+      // 컨테이너 높이도 scale 비율로 조정 (스크롤 정확하게)
+      docxRoot.style.height = (naturalH * scale) + 'px';
+    }
+  } else {
+    // 데스크톱 / 태블릿 — transform 제거 (overflow-x:auto 가 알아서)
+    docxRoot.style.transform = '';
+    docxRoot.style.width = '';
+    docxRoot.style.height = '';
+  }
+}
+let _resizeTimer = null;
+window.addEventListener('resize', () => {
+  clearTimeout(_resizeTimer);
+  _resizeTimer = setTimeout(fitDocxToViewport, 150);
+});
+window.__fitDocxToViewport = fitDocxToViewport;
 
 // =============================================================
 // PDF 페이지 썸네일 사이드바

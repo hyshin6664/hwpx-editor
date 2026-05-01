@@ -607,7 +607,11 @@ def main():
         # ─── 50. 헤더 버전 v15 ──
         try:
             ver = page.evaluate("() => document.getElementById('verBtn').textContent")
-            step("50. 헤더 버전 최신", ver and ver.startswith("v") and int(ver[1:].split("'")[0].split(".")[0]) >= 15, ver)
+            try:
+                vnum = int(ver.lstrip("v").split(".")[0])
+            except Exception:
+                vnum = 0
+            step("50. 헤더 버전 최신", vnum >= 15, ver)
         except Exception as e:
             step("50. 헤더 버전", False, str(e))
 
