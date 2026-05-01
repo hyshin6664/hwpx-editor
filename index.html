@@ -1053,6 +1053,16 @@ async function bootEditor() {
     log("info", "createEditor 완료, _request 패치 진행");
     patchEditorTimeouts(editor);
 
+    // rhwp 비표준 감지 다이얼로그 자동 응답 시도 (사용자가 한 번 더 누르지 않게)
+    // iframe 안의 모달은 cross-origin 이라 직접 클릭 못 하지만,
+    // postMessage 로 자동 보정 의사 전달 시도 + iframe 자체 자동 처리 옵션
+    try {
+      editor._iframe.contentWindow.postMessage(
+        { type: "rhwp-request", id: "autofix-cfg-" + Date.now(), method: "setOption", params: { autoFix: true, suppressDialog: true } },
+        "*"
+      );
+    } catch (_e) {}
+
     // (개발 진단용) 다른 곳에서 안 잡힌 iframe 응답만 콘솔로 (조용히)
     window.addEventListener("message", (e) => {
       if (e.source !== editor._iframe.contentWindow) return;
@@ -2641,8 +2651,10 @@ newMenu.querySelectorAll('.newm-item').forEach(b => {
         const hwpxjs = await loadHwpxjs();
         const m2h = hwpxjs.markdownToHwpx || (hwpxjs.default && hwpxjs.default.markdownToHwpx);
         if (typeof m2h !== 'function') throw new Error("hwpxjs markdownToHwpx 없음");
-        const bytes = await m2h("# 새 문서\n\n");
-        // rhwp 부팅 됐으면 즉시 마운트, 안 됐으면 다운로드만
+        // 본문 1줄 placeholder — lineseg 정상 + 사용자가 클릭해 캐럿 잡기 쉬움
+        const md = "여기를 클릭해서 내용을 입력하세요.";
+        const bytes = await m2h(md);
+        // rhwp 부팅 됐으면 즉시 마운트, 안 됐으면 다운로드
         if (editor && editorReady) {
           const blob = new Blob([bytes], { type: "application/hwp+zip" });
           const file = new File([blob], "새문서.hwpx", { type: "application/hwp+zip" });
