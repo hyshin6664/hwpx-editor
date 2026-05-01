@@ -2536,8 +2536,8 @@ bootEditor = async function() {
 
 // 부팅
 bootEditor();
-// 데스크톱이면 검색 패널 자동 열기 (사용자 요청)
-setTimeout(autoOpenSearchOnDesktop, 600);
+// 데스크톱이면 검색 패널 항상 열림 (사용자 요청)
+setTimeout(() => { if (window.innerWidth > 720) openSearch(); }, 600);
 </script>
 
 </body>
