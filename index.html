@@ -3125,9 +3125,68 @@ bootEditor = async function() {
   setNewBtnEnabled();
 };
 
+// =============================================================
+// 모바일 UX — 하단 액션 바 + 햄버거 드로어
+// =============================================================
+const mbOpenBtn = document.getElementById('mbOpenBtn');
+const mbSaveBtn = document.getElementById('mbSaveBtn');
+const mbPrintBtn = document.getElementById('mbPrintBtn');
+const mbCloseBtn = document.getElementById('mbCloseBtn');
+const hamburgerBtn = document.getElementById('hamburgerBtn');
+const hamDrawer = document.getElementById('hamDrawer');
+const hamOverlay = document.getElementById('hamOverlay');
+const hamCloseBtn = document.getElementById('hamCloseBtn');
+
+mbOpenBtn.addEventListener('click', () => document.getElementById('openBtn').click());
+mbSaveBtn.addEventListener('click', () => {
+  if (currentMode === 'docx') saveDocxBtn.click();
+  else if (currentMode === 'hwp') saveHwpxBtn.click();
+  else if (currentMode === 'pdf') savePdfBtn.click();
+});
+mbPrintBtn.addEventListener('click', () => document.getElementById('printBtn').click());
+mbCloseBtn.addEventListener('click', () => document.getElementById('closeBtn').click());
+
+// 하단 바 + 햄버거 활성/비활성 — setMode override
+const _origSetModeMobile = setMode;
+setMode = function(m) {
+  _origSetModeMobile(m);
+  const has = !!m;
+  mbSaveBtn.disabled = !has;
+  mbPrintBtn.disabled = !has;
+  mbCloseBtn.disabled = !has;
+  // 햄버거 항목
+  hamDrawer.querySelectorAll('.ham-item').forEach(it => {
+    const act = it.dataset.act;
+    if (act === 'mic') it.disabled = !has;
+    else if (act === 'ocr') it.disabled = (m !== 'pdf');
+    else if (act === 'merge') it.disabled = !has || m === 'pdf';
+    else it.disabled = false;
+  });
+};
+
+function openHam() { hamDrawer.classList.add('open'); hamOverlay.classList.add('open'); hamDrawer.setAttribute('aria-hidden', 'false'); }
+function closeHam() { hamDrawer.classList.remove('open'); hamOverlay.classList.remove('open'); hamDrawer.setAttribute('aria-hidden', 'true'); }
+hamburgerBtn.addEventListener('click', openHam);
+hamCloseBtn.addEventListener('click', closeHam);
+hamOverlay.addEventListener('click', closeHam);
+
+hamDrawer.querySelectorAll('.ham-item').forEach(item => {
+  item.addEventListener('click', () => {
+    const act = item.dataset.act;
+    closeHam();
+    if (act === 'new-docx') { document.getElementById('newBtn').click(); setTimeout(() => document.querySelector('#newMenu .newm-item[data-fmt="docx"]').click(), 100); }
+    else if (act === 'new-hwpx') { document.getElementById('newBtn').click(); setTimeout(() => document.querySelector('#newMenu .newm-item[data-fmt="hwpx"]').click(), 100); }
+    else if (act === 'mic') document.getElementById('micBtn').click();
+    else if (act === 'ocr') document.getElementById('ocrBtn').click();
+    else if (act === 'merge') document.getElementById('mergeBtn').click();
+    else if (act === 'ver') document.getElementById('verBtn').click();
+    else if (act === 'github') window.open('https://github.com/hyshin6664/hwpx-editor', '_blank');
+  });
+});
+
 // 부팅
 bootEditor();
-// 데스크톱이면 검색 패널 항상 열림 (사용자 요청)
+// 데스크톱이면 검색 패널 항상 열림 (사용자 요청). 모바일은 사용자가 열기.
 setTimeout(() => { if (window.innerWidth > 720) openSearch(); }, 600);
 </script>
 
