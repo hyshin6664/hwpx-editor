@@ -622,8 +622,8 @@ async function mountHwp(file) {
 let _pdfjsLib = null;
 async function getPdfjs() {
   if (_pdfjsLib) return _pdfjsLib;
-  const lib = await import("https://cdn.jsdelivr.net/npm/pdfjs-dist@5.7.284/build/pdf.mjs");
-  lib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@5.7.284/build/pdf.worker.mjs";
+  const lib = await import("https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.mjs");
+  lib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.mjs";
   _pdfjsLib = lib;
   return lib;
 }
