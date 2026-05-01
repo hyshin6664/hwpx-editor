@@ -2552,10 +2552,16 @@ printBtn.addEventListener('click', async () => {
 // =============================================================
 const closeBtn = document.getElementById('closeBtn');
 closeBtn.addEventListener('click', () => {
-  if (currentMode && state && state.modifiedCount > 0) {
-    if (!confirm("저장하지 않은 수정이 있습니다. 닫을까요?")) return;
+  // 수정 진행 중인지 단순 체크
+  let hasChanges = false;
+  if (currentMode === 'docx' && docxState) {
+    hasChanges = docxState.paragraphs.some(p => p.el && p.el.textContent !== p.originalText);
+  } else if (currentMode === 'pdf' && pdfState) {
+    hasChanges = pdfState.pages.some(p => p.edits && p.edits.length > 0);
   }
+  if (hasChanges && !confirm("저장하지 않은 수정이 있습니다. 닫을까요?")) return;
   clearAllHostsAndState();
+  clearPdfThumbnails();
   currentMode = null;
   filenameLabel.textContent = '';
   wordCountEl.textContent = '';
