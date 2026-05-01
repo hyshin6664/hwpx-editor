@@ -560,19 +560,28 @@
     <button class="ver-btn" id="verBtn" title="업데이트 내역">v10<span class="dot"></span></button>
   </div>
   <span class="filename" id="filenameLabel"></span>
+  <span id="wordCount" style="margin-left:8px;font-size:11px;color:var(--text-muted);font-weight:500"></span>
   <div class="spacer"></div>
 
   <div class="group">
-    <button class="btn" id="openBtn" disabled><span class="ico">📁</span><span class="label">파일 열기</span></button>
+    <button class="btn" id="openBtn" disabled><span class="ico">📁</span><span class="label">열기</span></button>
+    <div style="position:relative;display:inline-block">
+      <button class="btn" id="newBtn" disabled title="빈 문서 새로 만들기"><span class="ico">➕</span><span class="label">새 문서</span></button>
+      <div id="newMenu" style="display:none;position:absolute;top:100%;left:0;margin-top:4px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);z-index:50;min-width:160px;overflow:hidden">
+        <button class="newm-item" data-fmt="docx" style="display:block;width:100%;text-align:left;padding:9px 14px;border:none;background:transparent;cursor:pointer;font:inherit;color:var(--text)">📝 빈 워드 (.docx)</button>
+        <button class="newm-item" data-fmt="hwpx" style="display:block;width:100%;text-align:left;padding:9px 14px;border:none;background:transparent;cursor:pointer;font:inherit;color:var(--text)">📄 빈 한글 (.hwpx)</button>
+      </div>
+    </div>
   </div>
   <div class="sep"></div>
   <div class="group">
-    <button class="btn primary" id="saveHwpxBtn" disabled><span class="ico">💾</span><span class="label">.hwpx 받기</span></button>
-    <button class="btn" id="saveHwpBtn" disabled><span class="ico">💾</span><span class="label">.hwp 받기</span></button>
-    <button class="btn" id="savePdfBtn" disabled><span class="ico">📄</span><span class="label">PDF 받기</span></button>
+    <button class="btn primary" id="saveHwpxBtn" disabled><span class="ico">💾</span><span class="label">.hwpx</span></button>
+    <button class="btn" id="saveHwpBtn" disabled><span class="ico">💾</span><span class="label">.hwp</span></button>
+    <button class="btn" id="saveDocxBtn" disabled><span class="ico">💾</span><span class="label">.docx</span></button>
+    <button class="btn" id="savePdfBtn" disabled><span class="ico">📄</span><span class="label">PDF</span></button>
+    <button class="btn" id="printBtn" disabled title="바로 인쇄"><span class="ico">🖨️</span><span class="label">인쇄</span></button>
   </div>
 
-  <button class="btn" id="saveDocxBtn" disabled style="display:none"><span class="ico">💾</span><span class="label">.docx 받기</span></button>
   <button class="btn" id="searchToggleBtn" disabled title="검색 (Ctrl+F)"><span class="ico">🔍</span><span class="label">찾기</span></button>
   <input type="file" id="picker" accept=".hwp,.hwpx,.pdf,.docx">
 </div>
@@ -615,11 +624,7 @@
 <footer>
   서버 업로드 없음 · 광고 없음 · 추적 없음 · 오픈소스 MIT ·
   <a href="https://github.com/hyshin6664/hwpx-editor" target="_blank" rel="noopener">소스</a>
-  <img id="visitorCount"
-       src="https://hits.seeyoufarm.com/api/count/incr/badge.svg?url=https%3A%2F%2Fhyshin6664.github.io%2Fhwpx-editor&count_bg=%237C8DB5&title_bg=%23BFC4D0&title=visits&edge_flat=true"
-       alt="방문자 수"
-       style="vertical-align:middle;margin-left:10px;height:18px;border-radius:3px;opacity:.8"
-       loading="lazy">
+  <span id="visitorCount" style="margin-left:10px;font-size:11px;color:var(--text-muted);background:var(--surface-2);padding:2px 9px;border-radius:999px;border:1px solid var(--border)"></span>
   <span class="solbox-credit">CDN &amp; Cloud is by Solbox..</span>
 </footer>
 
@@ -686,11 +691,20 @@ let pdfState = null;    // { bytes, pdfDoc(pdf-lib) }
 
 function setMode(mode) {
   currentMode = mode;
-  // 다운로드 버튼 표시/숨김: 모드별
-  saveHwpxBtn.style.display = (mode === 'hwp') ? '' : 'none';
-  saveHwpBtn.style.display  = (mode === 'hwp') ? '' : 'none';
-  saveDocxBtn.style.display = (mode === 'docx') ? '' : 'none';
+  // 모든 다운로드 버튼은 항상 표시 (가능한 변환은 모두 시도)
+  // 단 PDF 모드에서는 hwp/hwpx/docx 변환 가능 (텍스트만), DOCX 는 hwpx 가능, HWP 는 docx 가능
+  saveHwpxBtn.style.display = '';
+  saveHwpBtn.style.display = (mode === 'hwp') ? '' : 'none'; // .hwp 는 rhwp 만 출력 가능
+  saveDocxBtn.style.display = '';
   savePdfBtn.style.display  = (mode ? '' : 'none');
+  // 활성화 — 모드 있으면 가능
+  if (mode) {
+    saveHwpxBtn.disabled = false;
+    saveDocxBtn.disabled = false;
+    savePdfBtn.disabled = false;
+    if (mode === 'hwp') saveHwpBtn.disabled = false;
+    const pb = document.getElementById('printBtn'); if (pb) pb.disabled = false;
+  }
 }
 
 function showLoading(text, sub) {
@@ -2247,6 +2261,258 @@ versionBtn.addEventListener('click', openNews);
 newsClose.addEventListener('click', () => newsOverlay.classList.add('hidden'));
 newsOverlay.addEventListener('click', (e) => { if (e.target === newsOverlay) newsOverlay.classList.add('hidden'); });
 refreshVerDot();
+
+// =============================================================
+// 방문자 카운터 (localStorage 로컬, 외부 의존 0)
+// =============================================================
+(function () {
+  try {
+    let n = parseInt(localStorage.getItem('solbox_docs_visits') || '0', 10);
+    // 같은 세션은 1회만 +1
+    if (!sessionStorage.getItem('solbox_docs_session_counted')) {
+      n += 1;
+      localStorage.setItem('solbox_docs_visits', String(n));
+      sessionStorage.setItem('solbox_docs_session_counted', '1');
+    }
+    document.getElementById('visitorCount').textContent = `🌿 방문 ${n.toLocaleString()}회`;
+  } catch (_e) {
+    document.getElementById('visitorCount').textContent = '';
+  }
+})();
+
+// =============================================================
+// 글자수 표시 (공백 제외)
+// =============================================================
+const wordCountEl = document.getElementById('wordCount');
+function updateWordCount() {
+  if (!currentMode) { wordCountEl.textContent = ''; return; }
+  let text = '';
+  if (currentMode === 'docx' && docxState) {
+    text = docxState.paragraphs.map(p => p.el ? p.el.textContent : p.originalText).join(' ');
+  } else if (currentMode === 'pdf' && pdfState) {
+    // PDF 는 새로 추가한 글씨만 카운트 (원본 본문 추출은 무거움)
+    text = (pdfState.pages || []).flatMap(p => p.edits.filter(e => e.type === 'text').map(e => e.text)).join(' ');
+  } else {
+    wordCountEl.textContent = '';
+    return;
+  }
+  const noSpace = text.replace(/\s/g, '');
+  wordCountEl.textContent = noSpace.length > 0 ? `공백제외 ${noSpace.length.toLocaleString()}자` : '';
+}
+// DOCX/PDF 변경 시 호출되도록 — input 핸들러에서 호출 필요. 주기적으로도 갱신.
+setInterval(updateWordCount, 1500);
+
+// =============================================================
+// 새 문서 (빈 .docx / .hwpx)
+// =============================================================
+const newBtn = document.getElementById('newBtn');
+const newMenu = document.getElementById('newMenu');
+function setNewBtnEnabled() { newBtn.disabled = !editorReady; }
+newBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  newMenu.style.display = newMenu.style.display === 'block' ? 'none' : 'block';
+});
+document.addEventListener('click', () => { newMenu.style.display = 'none'; });
+newMenu.querySelectorAll('.newm-item').forEach(b => {
+  b.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    newMenu.style.display = 'none';
+    const fmt = b.dataset.fmt;
+    if (currentMode && !confirm("현재 작업이 사라집니다. 새 문서를 만들까요?")) return;
+    try {
+      showLoading("새 문서 만드는 중…", `.${fmt}`);
+      if (fmt === 'docx') {
+        const docxLib = await import("https://cdn.jsdelivr.net/npm/docx@9.6.1/+esm");
+        const doc = new docxLib.Document({
+          sections: [{
+            properties: {},
+            children: [new docxLib.Paragraph({ children: [new docxLib.TextRun("새 문서")] })],
+          }],
+        });
+        const blob = await docxLib.Packer.toBlob(doc);
+        const file = new File([blob], "새문서.docx", { type: blob.type });
+        hideLoading();
+        await mountDocx(file);
+      } else if (fmt === 'hwpx') {
+        const hwpxjs = await loadHwpxjs();
+        // markdownToHwpx 사용
+        let bytes;
+        if (typeof hwpxjs.markdownToHwpx === 'function') {
+          bytes = await hwpxjs.markdownToHwpx("# 새 문서\n\n");
+        } else {
+          throw new Error("hwpxjs markdownToHwpx 없음");
+        }
+        const blob = new Blob([bytes], { type: "application/hwp+zip" });
+        const file = new File([blob], "새문서.hwpx", { type: "application/hwp+zip" });
+        hideLoading();
+        await mountHwp(file);
+      }
+    } catch (err) {
+      hideLoading();
+      console.error(err);
+      alert("새 문서 만들기 실패: " + (err && err.message ? err.message : err));
+    }
+  });
+});
+
+// hwpxjs lazy 로더 (재사용)
+let _hwpxjsMod = null;
+async function loadHwpxjs() {
+  if (_hwpxjsMod) return _hwpxjsMod;
+  _hwpxjsMod = await import("https://cdn.jsdelivr.net/npm/@ssabrojs/hwpxjs/dist/browser/hwpxjs.browser.mjs");
+  return _hwpxjsMod;
+}
+
+// =============================================================
+// 교차 다운로드 — 모드 무관 어떤 형식으로든 받기 (텍스트 위주)
+// =============================================================
+
+// 현재 문서의 평문 텍스트 (단락 배열)
+async function getCurrentParagraphsText() {
+  if (currentMode === 'docx' && docxState) {
+    return docxState.paragraphs
+      .map(p => p.el ? p.el.textContent : p.originalText)
+      .filter(t => t && t.trim());
+  } else if (currentMode === 'hwp' && editor) {
+    // exportHwp → hwpToText
+    const hwpBytes = await editor.exportHwp();
+    const hwpxjs = await loadHwpxjs();
+    if (typeof hwpxjs.hwpToText !== 'function') throw new Error("hwpToText 없음");
+    const text = await hwpxjs.hwpToText(new Uint8Array(hwpBytes));
+    return text.split(/\r?\n/).filter(l => l.trim());
+  } else if (currentMode === 'pdf' && pdfState) {
+    const pdfjs = await getPdfjs();
+    const pdfDoc = await pdfjs.getDocument({ data: pdfState.bytes.slice() }).promise;
+    const all = [];
+    for (let i = 1; i <= pdfDoc.numPages; i++) {
+      const page = await pdfDoc.getPage(i);
+      const tc = await page.getTextContent();
+      const lineText = tc.items.map(it => it.str).join(' ').trim();
+      if (lineText) all.push(lineText);
+    }
+    return all;
+  }
+  return [];
+}
+
+// 텍스트로 .docx 파일 만들어 다운로드
+async function exportAsDocx() {
+  const lines = await getCurrentParagraphsText();
+  const docxLib = await import("https://cdn.jsdelivr.net/npm/docx@9.6.1/+esm");
+  const doc = new docxLib.Document({
+    sections: [{
+      properties: {},
+      children: lines.length > 0
+        ? lines.map(l => new docxLib.Paragraph({ children: [new docxLib.TextRun(l)] }))
+        : [new docxLib.Paragraph({ children: [new docxLib.TextRun("")] })],
+    }],
+  });
+  const blob = await docxLib.Packer.toBlob(doc);
+  downloadBytes(blob, setBaseName() + ".docx",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+}
+
+// 텍스트로 .hwpx 파일 만들어 다운로드
+async function exportAsHwpxFromText() {
+  const lines = await getCurrentParagraphsText();
+  const md = lines.length > 0 ? lines.join("\n\n") : "(빈 문서)";
+  const hwpxjs = await loadHwpxjs();
+  const m2h = hwpxjs.markdownToHwpx || (hwpxjs.default && hwpxjs.default.markdownToHwpx);
+  if (typeof m2h !== 'function') throw new Error("markdownToHwpx 없음");
+  const bytes = await m2h(md);
+  downloadBytes(bytes, setBaseName() + ".hwpx", "application/hwp+zip");
+}
+
+// === 기존 saveHwpxBtn click handler 보강 ===
+// 모드별 분기:
+//   hwp   → editor.exportHwp + hwpxjs.hwpToHwpx (기존)
+//   docx  → 우리 XML 방식 (변경 없음 — 우리는 saveDocxBtn 별도)
+//   docx → hwpx: text 추출 → markdownToHwpx
+//   pdf  → text 추출 → markdownToHwpx
+const _originalSaveHwpx = saveHwpxBtn.onclick;
+saveHwpxBtn.addEventListener('click', async (e) => {
+  // hwp 모드에서는 기존 핸들러가 처리 (이미 등록됨)
+  if (currentMode === 'docx' || currentMode === 'pdf') {
+    e.stopImmediatePropagation();
+    const orig = saveHwpxBtn.innerHTML;
+    saveHwpxBtn.disabled = true;
+    saveHwpxBtn.innerHTML = '<span class="ico">⏳</span><span class="label">변환 중…</span>';
+    try {
+      await exportAsHwpxFromText();
+    } catch (err) {
+      console.error(err);
+      alert(".hwpx 변환 실패: " + (err && err.message ? err.message : err));
+    } finally {
+      saveHwpxBtn.innerHTML = orig;
+      saveHwpxBtn.disabled = false;
+    }
+  }
+}, true); // useCapture: true — 기존 핸들러보다 먼저 실행
+
+// === saveDocxBtn handler 모드별 분기 ===
+saveDocxBtn.addEventListener('click', async (e) => {
+  if (currentMode === 'hwp' || currentMode === 'pdf') {
+    e.stopImmediatePropagation();
+    const orig = saveDocxBtn.innerHTML;
+    saveDocxBtn.disabled = true;
+    saveDocxBtn.innerHTML = '<span class="ico">⏳</span><span class="label">변환 중…</span>';
+    try {
+      await exportAsDocx();
+    } catch (err) {
+      console.error(err);
+      alert(".docx 변환 실패: " + (err && err.message ? err.message : err));
+    } finally {
+      saveDocxBtn.innerHTML = orig;
+      saveDocxBtn.disabled = false;
+    }
+  }
+}, true);
+
+// =============================================================
+// 인쇄 버튼 — 모드별 적절한 인쇄 흐름
+// =============================================================
+const printBtn = document.getElementById('printBtn');
+function setPrintBtnEnabled() { printBtn.disabled = !currentMode; }
+printBtn.addEventListener('click', async () => {
+  if (!currentMode) return;
+  const orig = printBtn.innerHTML;
+  printBtn.disabled = true;
+  printBtn.innerHTML = '<span class="ico">⏳</span><span class="label">준비 중…</span>';
+  try {
+    if (currentMode === 'pdf') {
+      // PDF.js 캔버스를 새 창에 모아 인쇄
+      const html = ['<!DOCTYPE html><html><head><meta charset="utf-8"><title>',setBaseName(),'</title>',
+        '<style>@page{size:A4;margin:0}body{margin:0}img{display:block;max-width:100%;page-break-after:always}.credit{position:fixed;right:8mm;bottom:6mm;font-size:7pt;color:#ccc}</style></head><body>'];
+      pdfState.pages.forEach(p => {
+        html.push('<img src="'+p.canvas.toDataURL('image/png')+'">');
+      });
+      html.push('<div class="credit">CDN &amp; Cloud is by Solbox..</div>');
+      html.push('<scr'+'ipt>window.onload=function(){setTimeout(function(){window.print()},300)}</scr'+'ipt></body></html>');
+      const w = window.open('', '_blank');
+      w.document.open(); w.document.write(html.join('')); w.document.close();
+    } else if (currentMode === 'docx') {
+      const wrap = document.querySelector('#docxHost .docx');
+      if (!wrap) throw new Error("렌더된 문서 없음");
+      printElementToPdf(wrap, setBaseName());
+    } else if (currentMode === 'hwp') {
+      // savePdfBtn 의 hwp 인쇄 로직 재사용
+      savePdfBtn.click();
+    }
+  } catch (err) {
+    console.error(err);
+    alert("인쇄 실패: " + (err && err.message ? err.message : err));
+  } finally {
+    printBtn.innerHTML = orig;
+    printBtn.disabled = false;
+  }
+});
+
+// 부팅 후 새 문서 버튼 활성화
+const _origBoot = bootEditor;
+bootEditor = async function() {
+  await _origBoot.call(this);
+  setNewBtnEnabled();
+};
 
 // 부팅
 bootEditor();
