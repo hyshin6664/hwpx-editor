@@ -2576,6 +2576,18 @@ closeBtn.addEventListener('click', () => {
 const micBtn = document.getElementById('micBtn');
 let recognition = null;
 let recognizing = false;
+let _lastEditTarget = null; // 마이크 버튼 누르기 전 마지막 편집 위치 추적
+function isEditable(el) {
+  return el && (el.isContentEditable || el.tagName === 'INPUT' || el.tagName === 'TEXTAREA');
+}
+document.addEventListener('focusin', (e) => {
+  const t = e.target;
+  // 검색 입력칸은 제외 (음성을 본문에 넣어야 하니까)
+  if (t && t.id === 'searchInput') return;
+  if (t && t.id === 'replaceInput') return;
+  if (isEditable(t)) _lastEditTarget = t;
+}, true);
+
 function setupRecognition() {
   const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SpeechRec) return null;
@@ -2585,6 +2597,10 @@ function setupRecognition() {
   r.continuous = true;
   return r;
 }
+micBtn.addEventListener('mousedown', (e) => {
+  // 버튼 클릭이 포커스를 훔치지 않게 미리 막음
+  e.preventDefault();
+});
 micBtn.addEventListener('click', () => {
   if (!recognition) recognition = setupRecognition();
   if (!recognition) {
@@ -2595,13 +2611,17 @@ micBtn.addEventListener('click', () => {
     recognition.stop();
     return;
   }
-  // 활성 편집 요소 찾기
-  const target = document.activeElement;
-  const isEditable = target && (target.isContentEditable || target.tagName === 'INPUT' || target.tagName === 'TEXTAREA');
-  if (!isEditable) {
-    alert("음성 입력하려면 편집할 곳을 먼저 클릭해주세요");
+  // 활성 편집 요소: 1) 현재 active, 2) 마지막 추적한 편집 위치
+  let target = document.activeElement;
+  if (!isEditable(target) || target.id === 'searchInput' || target.id === 'replaceInput') {
+    target = _lastEditTarget;
+  }
+  if (!isEditable(target)) {
+    alert("음성 입력하려면 편집할 곳(문단·셀)을 먼저 클릭해주세요");
     return;
   }
+  // 클릭으로 포커스 옮기기
+  try { target.focus(); } catch (_e) {}
   let lastInterim = '';
   recognition.onresult = (e) => {
     let final = '';
