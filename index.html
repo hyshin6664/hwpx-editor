@@ -3743,7 +3743,21 @@ async function exportPdfAsIdenticalDocx() {
         row.chunks = chunks;
       });
 
-      // 2) 표 감지 — 연속한 행들이 chunk.x 위치 공유 (>=2 chunk per row, 인접 행 거리 작음)
+      // 2) 표 감지 — lineRects(테두리) 활용 + chunk.x 클러스터링
+      // 가는 사각형 → 가로/세로선
+      const hLines = [], vLines = [];
+      for (const lr of (pg.lineRects || [])) {
+        if (lr.h < 4 && lr.w > 30) hLines.push(lr.y);
+        else if (lr.w < 4 && lr.h > 30) vLines.push(lr.x);
+      }
+      function clusterLines(arr) {
+        arr.sort((a, b) => a - b);
+        const out = [];
+        for (const v of arr) if (out.length === 0 || v - out[out.length-1] > 3) out.push(v);
+        return out;
+      }
+      const vLinesClean = clusterLines(vLines);
+
       const tableGroups = [];
       let i = 0;
       while (i < rows.length) {
@@ -3765,11 +3779,21 @@ async function exportPdfAsIdenticalDocx() {
           } else break;
         }
         if (consecutive.length >= 2) {
-          colXs.sort((a, b) => a - b);
-          // 너무 가까운 컬럼 합치기
-          const merged = [colXs[0]];
-          for (let k = 1; k < colXs.length; k++) {
-            if (colXs[k] - merged[merged.length-1] > 25) merged.push(colXs[k]);
+          let merged;
+          // 세로선이 충분히 있으면 (>=3) 우선 사용 — 더 정확
+          if (vLinesClean.length >= 3) {
+            const tableMinX = Math.min(...colXs) - 30;
+            const tableMaxX = Math.max(...colXs) + 200;
+            merged = vLinesClean.filter(x => x >= tableMinX && x <= tableMaxX);
+            if (merged.length < 2) {
+              colXs.sort((a, b) => a - b);
+              merged = [colXs[0]];
+              for (let k = 1; k < colXs.length; k++) if (colXs[k] - merged[merged.length-1] > 25) merged.push(colXs[k]);
+            }
+          } else {
+            colXs.sort((a, b) => a - b);
+            merged = [colXs[0]];
+            for (let k = 1; k < colXs.length; k++) if (colXs[k] - merged[merged.length-1] > 25) merged.push(colXs[k]);
           }
           tableGroups.push({ rows: consecutive, cols: merged });
           i = j;
