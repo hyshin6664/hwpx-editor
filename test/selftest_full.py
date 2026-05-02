@@ -61,10 +61,13 @@ def main():
         ver = page.evaluate("() => document.getElementById('verBtn').textContent")
         step("2. 헤더 버전 표시", "v" in ver, f"{ver}")
 
-        # ─── 3. 검색 패널 데스크톱 자동 열림 ─────
-        page.wait_for_timeout(900)
-        opened = page.evaluate("() => document.getElementById('searchPanel').classList.contains('open')")
-        step("3. 검색 패널 자동 열림(데스크톱)", opened)
+        # ─── 3. 검색 패널 데스크톱 자동 열림 (setTimeout 600ms 후 자동 열림 — 폴링) ─────
+        try:
+            page.wait_for_function("() => document.getElementById('searchPanel').classList.contains('open')", timeout=5000)
+            step("3. 검색 패널 자동 열림(데스크톱)", True)
+        except Exception:
+            opened = page.evaluate("() => document.getElementById('searchPanel').classList.contains('open')")
+            step("3. 검색 패널 자동 열림(데스크톱)", opened)
 
         # ─── 4. 방문자 카운터 표시 ────────────────
         vc = page.evaluate("() => document.getElementById('visitorCount').textContent")
