@@ -1696,6 +1696,15 @@ async function mountPdf(file) {
       } catch (_e) {}
 
       // 🎯 표 테두리 추출 — getOperatorList 의 rect/line 명령 분석
+      // PDF.js 가 setFillRGBColor 등 args 를 0-1 float / 0-255 byte / 0-65535 로 다양하게 줌 → 정규화
+      function _normalizeOne(v) {
+        if (v <= 1.0001) return Math.round(v * 255);
+        if (v <= 255) return Math.round(v);
+        return Math.round(v / 257); // 65535 → 255
+      }
+      function _normalizeRGB(args) {
+        return [_normalizeOne(args[0]), _normalizeOne(args[1]), _normalizeOne(args[2])];
+      }
       // PDF.js OPS: 41=rectangle, 42=lineWidth, fill/stroke 등
       let lineRects = [];     // 가로/세로 선 (x, y, w, h)
       let fillRects = [];     // 채워진 사각형 (셀 배경)
@@ -1734,14 +1743,14 @@ async function mountPdf(file) {
             // args: [a,b,c,d,e,f]
             ctmStack[ctmStack.length - 1] = multiplyMatrix(getCTM(), args);
           } else if (fn === ops.setFillRGBColor) {
-            curFillRGB = [Math.round(args[0]*255), Math.round(args[1]*255), Math.round(args[2]*255)];
+            curFillRGB = _normalizeRGB(args);
           } else if (fn === ops.setStrokeRGBColor) {
-            curStrokeRGB = [Math.round(args[0]*255), Math.round(args[1]*255), Math.round(args[2]*255)];
+            curStrokeRGB = _normalizeRGB(args);
           } else if (fn === ops.setFillGray) {
-            const v = Math.round(args[0]*255);
+            const v = _normalizeOne(args[0]);
             curFillRGB = [v, v, v];
           } else if (fn === ops.setStrokeGray) {
-            const v = Math.round(args[0]*255);
+            const v = _normalizeOne(args[0]);
             curStrokeRGB = [v, v, v];
           } else if (fn === ops.rectangle) {
             // args: [x, y, w, h] in PDF user space
