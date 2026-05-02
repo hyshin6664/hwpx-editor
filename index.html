@@ -814,8 +814,8 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v20.9<span class="dot"></span></button>
-    <button class="install-btn" id="installBtn" title="이 편집기를 PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가합니다 — 다음부터 한 번에 열기" hidden>📌 바탕화면에 추가</button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v20.10<span class="dot"></span></button>
+    <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
   <span id="wordCount" style="margin-left:8px;font-size:11px;color:var(--text-muted);font-weight:500"></span>
@@ -833,17 +833,28 @@
   </div>
   <div class="sep"></div>
   <div class="group">
-    <button class="btn primary" id="saveHwpxBtn" disabled><span class="ico">💾</span><span class="label">.hwpx</span></button>
-    <button class="btn" id="saveHwpBtn" disabled><span class="ico">💾</span><span class="label">.hwp</span></button>
-    <button class="btn" id="saveDocxBtn" disabled><span class="ico">💾</span><span class="label">.docx</span></button>
-    <button class="btn" id="savePdfBtn" disabled><span class="ico">📄</span><span class="label">PDF</span></button>
+    <!-- 저장 드롭다운 (모드별 .hwpx/.hwp/.docx/PDF 통합) -->
+    <div style="position:relative;display:inline-block">
+      <button class="btn primary" id="saveBtn" disabled title="현재 형식으로 저장 (▾ 다른 형식 선택)"><span class="ico">💾</span><span class="label">저장</span><span style="margin-left:4px;font-size:9px;opacity:0.85">▾</span></button>
+      <div id="saveMenu" style="display:none;position:absolute;top:100%;right:0;margin-top:4px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);z-index:50;min-width:170px;overflow:hidden">
+        <button class="save-item" data-fmt="hwpx" style="display:block;width:100%;text-align:left;padding:9px 14px;border:none;background:transparent;cursor:pointer;font:inherit;color:var(--text)">💾 .hwpx (한글)</button>
+        <button class="save-item" data-fmt="hwp"  style="display:block;width:100%;text-align:left;padding:9px 14px;border:none;background:transparent;cursor:pointer;font:inherit;color:var(--text)">💾 .hwp (구한글)</button>
+        <button class="save-item" data-fmt="docx" style="display:block;width:100%;text-align:left;padding:9px 14px;border:none;background:transparent;cursor:pointer;font:inherit;color:var(--text)">💾 .docx (워드)</button>
+        <button class="save-item" data-fmt="pdf"  style="display:block;width:100%;text-align:left;padding:9px 14px;border:none;background:transparent;cursor:pointer;font:inherit;color:var(--text)">📄 .pdf (PDF)</button>
+      </div>
+    </div>
+    <!-- 기존 개별 버튼은 유지하되 hidden — 호환성 (자체 테스트가 click 으로 호출) -->
+    <button class="btn primary" id="saveHwpxBtn" hidden disabled><span class="ico">💾</span><span class="label">.hwpx</span></button>
+    <button class="btn" id="saveHwpBtn" hidden disabled><span class="ico">💾</span><span class="label">.hwp</span></button>
+    <button class="btn" id="saveDocxBtn" hidden disabled><span class="ico">💾</span><span class="label">.docx</span></button>
+    <button class="btn" id="savePdfBtn" hidden disabled><span class="ico">📄</span><span class="label">PDF</span></button>
     <button class="btn" id="printBtn" disabled title="바로 인쇄"><span class="ico">🖨️</span><span class="label">인쇄</span></button>
     <button class="btn" id="closeBtn" disabled title="문서 닫기"><span class="ico">✕</span><span class="label">닫기</span></button>
   </div>
 
+  <!-- 헤더 간소화: OCR/일괄/음성 은 메뉴(햄버거) 안으로 — 항상 함께 보이지는 않게 -->
   <button class="btn" id="micBtn" hidden disabled title="음성 입력 (한국어)"><span class="ico">🎙️</span><span class="label">음성</span></button>
-  <button class="btn" id="ocrBtn" disabled title="OCR (이미지에서 글자 추출)"><span class="ico">📷</span><span class="label">OCR</span></button>
-  <button class="btn" id="mergeBtn" disabled title="명단으로 양식 일괄 만들기 (Mail Merge)"><span class="ico">📨</span><span class="label">일괄</span></button>
+  <button class="btn" id="ocrBtn" hidden disabled title="OCR (이미지에서 글자 추출)"><span class="ico">📷</span><span class="label">OCR</span></button>
   <button class="btn" id="searchToggleBtn" disabled title="검색 (Ctrl+F)"><span class="ico">🔍</span><span class="label">찾기</span></button>
   <button class="btn" id="hamburgerBtn" title="더보기" aria-label="메뉴"><span class="ico">≡</span><span class="label">메뉴</span></button>
   <input type="file" id="picker" accept=".hwp,.hwpx,.pdf,.docx">
@@ -875,7 +886,6 @@
     <button class="ham-item" data-act="new-docx"><span class="ico">📝</span>새 워드 (.docx)</button>
     <button class="ham-item" data-act="new-hwpx"><span class="ico">📄</span>새 한글 (.hwpx)</button>
     <button class="ham-item" data-act="ocr"><span class="ico">📷</span>OCR (글자 추출)</button>
-    <button class="ham-item" data-act="merge"><span class="ico">📨</span>양식 일괄 만들기</button>
     <button class="ham-item" data-act="ver"><span class="ico">ⓘ</span>업데이트 내역</button>
   </div>
 </aside>
@@ -925,6 +935,16 @@
 <!-- 검색·바꾸기 패널 -->
 <aside class="search-panel" id="searchPanel" aria-hidden="true">
   <div class="search-handle"></div>
+  <!-- 페이지 내비게이터 (검색 패널 상단) -->
+  <div id="pageNav" style="display:none;padding:10px 14px;border-bottom:1px solid var(--border);background:var(--surface-2);font-size:12px;color:var(--text-soft);">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <span>📄 페이지</span>
+      <input type="number" id="pageJumpInput" min="1" value="1" style="width:60px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;font:inherit;text-align:center;background:var(--surface);color:var(--text)">
+      <span>/ <b id="pageTotal">1</b></span>
+      <button id="pagePrevBtn" class="btn" style="padding:4px 8px;font-size:11px" title="이전">↑</button>
+      <button id="pageNextBtn" class="btn" style="padding:4px 8px;font-size:11px" title="다음">↓</button>
+    </div>
+  </div>
   <div class="search-head">
     <div class="search-title">
       <h4>🔍 찾기 및 바꾸기</h4>
@@ -992,6 +1012,9 @@ function setMode(mode) {
   saveHwpBtn.style.display = (mode === 'hwp') ? '' : 'none'; // .hwp 는 rhwp 만 출력 가능
   saveDocxBtn.style.display = '';
   savePdfBtn.style.display  = (mode ? '' : 'none');
+  // 통합 saveBtn 표시·활성
+  const saveBtn = document.getElementById('saveBtn');
+  if (saveBtn) saveBtn.disabled = !mode;
   // 활성화 — 모드 있으면 가능
   if (mode) {
     saveHwpxBtn.disabled = false;
@@ -1002,12 +1025,13 @@ function setMode(mode) {
     const cb = document.getElementById('closeBtn'); if (cb) cb.disabled = false;
     const mc = document.getElementById('micBtn'); if (mc) mc.disabled = false;
     const oc = document.getElementById('ocrBtn'); if (oc) oc.disabled = (mode !== 'pdf');
-    const mg = document.getElementById('mergeBtn'); if (mg) mg.disabled = (mode === 'pdf');
   } else {
-    ['closeBtn','micBtn','ocrBtn','mergeBtn'].forEach(id => {
+    ['closeBtn','micBtn','ocrBtn'].forEach(id => {
       const b = document.getElementById(id); if (b) b.disabled = true;
     });
   }
+  // 페이지 내비게이터 표시 갱신
+  if (typeof updatePageNav === 'function') updatePageNav();
 }
 
 function showLoading(text, sub) {
@@ -2853,9 +2877,30 @@ setMode = function(m) {
   // Service Worker 등록 + 업데이트 감지 → 새 버전 활성화되면 페이지 자동 새로고침 (한 번만)
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js').then(reg => {
-      // 페이지 로드 후 주기적으로 SW 업데이트 체크 (시간당 1회)
-      setInterval(() => { try { reg.update(); } catch(_){} }, 3600000);
+      // 페이지 로드 직후 + 주기적으로 SW 업데이트 체크
+      try { reg.update(); } catch(_){}
+      setInterval(() => { try { reg.update(); } catch(_){} }, 600000); // 10분마다
+      // 새 SW 가 waiting 상태로 들어오면 즉시 활성화 (기다리지 말고)
+      reg.addEventListener('updatefound', () => {
+        const nw = reg.installing;
+        if (nw) {
+          nw.addEventListener('statechange', () => {
+            if (nw.state === 'installed' && navigator.serviceWorker.controller) {
+              try { nw.postMessage({ type: 'SKIP_WAITING' }); } catch(_){}
+            }
+          });
+        }
+      });
     }).catch(()=>{});
+    // SW 가 보내는 강제 새로고침 메시지 수신
+    navigator.serviceWorker.addEventListener('message', (e) => {
+      if (e.data && e.data.type === 'SW_FORCE_RELOAD') {
+        if (sessionStorage.getItem('solbox_force_reload_done') !== 'yes') {
+          sessionStorage.setItem('solbox_force_reload_done', 'yes');
+          location.reload();
+        }
+      }
+    });
     // 새 SW 가 활성화되면(controllerchange) 한 번만 새로고침 → 사용자가 항상 최신 버전을 봄
     let _swReloaded = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
@@ -2963,6 +3008,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v20.10", date: "2026-05-02", desc: "🧹 PC 메뉴 압축 — 저장 버튼 4개를 [💾 저장 ▾] 드롭다운 1개로, OCR/일괄 헤더에서 제거(메뉴로) · 일괄 만들기 기능 자체 제거 · 📌 라벨 '바로가기' 로 통일 · 📄 페이지 내비게이터(검색 패널 상단) — 총 X / 현재 Y 표시 + 숫자 입력으로 즉시 이동, ↑↓ 버튼 · SW 강제 재로드 메시지 + 즉시 활성화로 버전 정체 문제 완화" },
   { version: "v20.9", date: "2026-05-02", desc: "🎙️ 모바일 음성 입력 안정화 — getUserMedia 사전 권한 확인(모바일에서 recognition.start() 가 조용히 실패하는 케이스 방지) · onend 자동 재시작(모바일 Chrome 이 짧은 무음에 자동 종료해도 계속 듣게) · 명확한 에러 메시지(권한·마이크 없음·네트워크) · 불필요한 'GitHub 소스' 메뉴 제거" },
   { version: "v20.8", date: "2026-05-02", desc: "📌 안드로이드 한 번 클릭 설치 가능하게 수정 — manifest 의 data: URL 아이콘 → 실 SVG 파일(icon-192.svg, icon-512.svg)로 교체. Chrome 의 PWA 설치 자격 충족 → beforeinstallprompt 이벤트 정상 발화. iOS 는 Apple 이 API 자체를 차단해서 안내 모달이 한계." },
   { version: "v20.7", date: "2026-05-02", desc: "📐 워드/한글 새 문서 페이지 폭 표준 A4 (794px) 강제 — docx-preview 가 폭 누락하는 문제 보정 (CSS zoom 부작용 제거, transform 기반 모바일 자동 축소) · 📱 fitDocxToViewport 로 ≤720px 자동 fit (≤480 → 720 까지 모바일 처리 확장) · 📌 바로가기 버튼 모든 기기 항상 표시 (안드로이드 안내 모달 추가, prompt 미충족 사용자도 수동 설치 가능)" },
@@ -3815,10 +3861,10 @@ ocrBtn.addEventListener('click', async () => {
 });
 
 // =============================================================
-// 양식 일괄 만들기 (Mail Merge) — DOCX/HWPX 의 {{변수}} 자리를 명단으로 일괄 채워서 ZIP 다운로드
+// 양식 일괄 만들기 (Mail Merge) — 사용 빈도 낮아 v20.10 에서 제거 (필요 시 git history 참조)
 // =============================================================
 const mergeBtn = document.getElementById('mergeBtn');
-mergeBtn.addEventListener('click', async () => {
+if (mergeBtn) mergeBtn.addEventListener('click', async () => {
   if (currentMode === 'pdf') return alert("일괄 만들기는 워드(.docx) 또는 한글(.hwp/.hwpx) 모드에서만 가능합니다.");
   // 변수 자리({{이름}}, {{금액}} 등) 찾기
   const text = currentMode === 'docx'
@@ -4004,7 +4050,6 @@ setMode = function(m) {
     const act = it.dataset.act;
     if (act === 'mic') it.disabled = !has;
     else if (act === 'ocr') it.disabled = (m !== 'pdf');
-    else if (act === 'merge') it.disabled = !has || m === 'pdf';
     else it.disabled = false;
   });
 };
@@ -4023,10 +4068,107 @@ hamDrawer.querySelectorAll('.ham-item').forEach(item => {
     else if (act === 'new-hwpx') { document.getElementById('newBtn').click(); setTimeout(() => document.querySelector('#newMenu .newm-item[data-fmt="hwpx"]').click(), 100); }
     else if (act === 'mic') document.getElementById('micBtn').click();
     else if (act === 'ocr') document.getElementById('ocrBtn').click();
-    else if (act === 'merge') document.getElementById('mergeBtn').click();
     else if (act === 'ver') document.getElementById('verBtn').click();
   });
 });
+
+// =============================================================
+// 통합 저장 버튼 (드롭다운) — 모든 형식 한 곳에서
+// =============================================================
+(function setupSaveDropdown() {
+  const saveBtn = document.getElementById('saveBtn');
+  const saveMenu = document.getElementById('saveMenu');
+  if (!saveBtn || !saveMenu) return;
+  function openMenu() { saveMenu.style.display = 'block'; }
+  function closeMenu() { saveMenu.style.display = 'none'; }
+  saveBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (saveMenu.style.display === 'block') closeMenu(); else openMenu();
+  });
+  document.addEventListener('click', (e) => {
+    if (!saveMenu.contains(e.target) && e.target !== saveBtn) closeMenu();
+  });
+  saveMenu.querySelectorAll('.save-item').forEach(it => {
+    it.addEventListener('click', () => {
+      const fmt = it.dataset.fmt;
+      closeMenu();
+      const btnId = ({ hwpx: 'saveHwpxBtn', hwp: 'saveHwpBtn', docx: 'saveDocxBtn', pdf: 'savePdfBtn' })[fmt];
+      const target = document.getElementById(btnId);
+      if (target && !target.disabled) target.click();
+      else alert('현재 모드에서는 이 형식으로 저장할 수 없어요.');
+    });
+  });
+})();
+
+// =============================================================
+// 페이지 내비게이터 — 검색 패널 상단 (총 X / 현재 Y, 이동)
+// =============================================================
+function getCurrentPageInfo() {
+  // PDF 모드
+  if (currentMode === 'pdf' && pdfState && pdfState.pages) {
+    const host = document.getElementById('pdfHost');
+    if (!host) return { total: pdfState.pages.length, current: 1 };
+    const pages = host.querySelectorAll('canvas, .pdf-page');
+    if (pages.length === 0) return { total: pdfState.pages.length, current: 1 };
+    const hostRect = host.getBoundingClientRect();
+    const center = hostRect.top + hostRect.height / 3;
+    let curr = 1;
+    pages.forEach((p, i) => { const r = p.getBoundingClientRect(); if (r.top <= center) curr = i + 1; });
+    return { total: pages.length, current: curr };
+  }
+  // DOCX/HWPX docx-mode
+  if ((currentMode === 'docx' || currentMode === 'hwp') && document.getElementById('docxHost')) {
+    const host = document.getElementById('docxHost');
+    const sections = host.querySelectorAll('section');
+    if (sections.length === 0) return null;
+    const hostRect = host.getBoundingClientRect();
+    const center = hostRect.top + hostRect.height / 3;
+    let curr = 1;
+    sections.forEach((s, i) => { const r = s.getBoundingClientRect(); if (r.top <= center) curr = i + 1; });
+    return { total: sections.length, current: curr };
+  }
+  return null;
+}
+function updatePageNav() {
+  const navEl = document.getElementById('pageNav');
+  if (!navEl) return;
+  const info = getCurrentPageInfo();
+  if (!info || info.total < 1) { navEl.style.display = 'none'; return; }
+  navEl.style.display = '';
+  document.getElementById('pageTotal').textContent = info.total;
+  const inp = document.getElementById('pageJumpInput');
+  if (inp && document.activeElement !== inp) inp.value = info.current;
+  inp.max = info.total;
+}
+function jumpToPage(n) {
+  if (currentMode === 'pdf') {
+    const host = document.getElementById('pdfHost');
+    const pages = host.querySelectorAll('canvas, .pdf-page');
+    const target = pages[Math.max(0, Math.min(pages.length - 1, n - 1))];
+    if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } else {
+    const sections = document.querySelectorAll('#docxHost section');
+    const target = sections[Math.max(0, Math.min(sections.length - 1, n - 1))];
+    if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+}
+(function setupPageNav() {
+  const inp = document.getElementById('pageJumpInput');
+  const prev = document.getElementById('pagePrevBtn');
+  const next = document.getElementById('pageNextBtn');
+  if (!inp) return;
+  inp.addEventListener('change', () => { const n = parseInt(inp.value, 10); if (n >= 1) jumpToPage(n); });
+  inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { const n = parseInt(inp.value, 10); if (n >= 1) jumpToPage(n); } });
+  prev.addEventListener('click', () => { const info = getCurrentPageInfo(); if (info) jumpToPage(Math.max(1, info.current - 1)); });
+  next.addEventListener('click', () => { const info = getCurrentPageInfo(); if (info) jumpToPage(Math.min(info.total, info.current + 1)); });
+  // 스크롤로 현재 페이지 갱신
+  ['docxHost','pdfHost'].forEach(id => {
+    const h = document.getElementById(id);
+    if (h) h.addEventListener('scroll', () => { clearTimeout(window.__pageNavTimer); window.__pageNavTimer = setTimeout(updatePageNav, 100); });
+  });
+  // 윈도우 스크롤도
+  window.addEventListener('scroll', () => { clearTimeout(window.__pageNavTimer); window.__pageNavTimer = setTimeout(updatePageNav, 100); }, true);
+})();
 
 // 부팅
 bootEditor();

@@ -8,9 +8,18 @@ self.addEventListener('install', (e) => {
 });
 
 self.addEventListener('activate', (e) => {
-  e.waitUntil(caches.keys().then(keys =>
-    Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
-  ).then(() => self.clients.claim()));
+  e.waitUntil(
+    caches.keys().then(keys =>
+      Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
+    ).then(() => self.clients.claim()).then(async () => {
+      // 새 SW 활성화 직후 모든 컨트롤된 클라이언트에게 강제 새로고침 메시지 발송
+      // (구버전 page 가 controllerchange 리스너 없어서 자동 reload 못 하는 케이스 커버)
+      try {
+        const list = await self.clients.matchAll({ type: 'window' });
+        list.forEach(c => { try { c.postMessage({ type: 'SW_FORCE_RELOAD' }); } catch(_){} });
+      } catch(_){}
+    })
+  );
 });
 
 self.addEventListener('fetch', (e) => {
