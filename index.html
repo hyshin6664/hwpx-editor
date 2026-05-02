@@ -821,7 +821,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v20.11<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v20.12<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -3082,6 +3082,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v20.12", date: "2026-05-02", desc: "🎙️ 음성 작동 안 되던 진짜 원인 수정 — 이전 버전이 모바일에서 await ensureMicPermission() 호출하면 user gesture 가 만료돼서 recognition.start() 가 조용히 실패하던 문제. 사전 권한 확인 제거하고 클릭 핸들러를 동기 처리, recognition.start() 가 직접 권한 다이얼로그 띄우게. 즉시 시각 피드백 (onstart 늦어도 FAB 빨간 펄스 + 듣고 있어요 말풍선 바로 표시)" },
   { version: "v20.11", date: "2026-05-02", desc: "🧽 코드 청소 — Mail Merge 데드 코드 78줄 제거 (mergeBtn null placeholder 만 호환용 유지) · 📜 구버전 워드(.doc) 자동 .docx 변환 (텍스트 추출 후 새 docx 마운트, 사용자가 손볼 필요 없음, 저장 시 .docx) · ✨ Solbox 크레딧 footer 인라인 보존 (FAB 가 가리던 absolute 위치 문제 해결, 라벤더-민트 그라데이션 뱃지) · 음성 모바일 권한·자동 재시작·메뉴 압축·페이지 내비게이터 v20.6~v20.10 그대로" },
   { version: "v20.10", date: "2026-05-02", desc: "🧹 PC 메뉴 압축 — 저장 버튼 4개를 [💾 저장 ▾] 드롭다운 1개로, OCR/일괄 헤더에서 제거(메뉴로) · 일괄 만들기 기능 자체 제거 · 📌 라벨 '바로가기' 로 통일 · 📄 페이지 내비게이터(검색 패널 상단) — 총 X / 현재 Y 표시 + 숫자 입력으로 즉시 이동, ↑↓ 버튼 · SW 강제 재로드 메시지 + 즉시 활성화로 버전 정체 문제 완화" },
   { version: "v20.9", date: "2026-05-02", desc: "🎙️ 모바일 음성 입력 안정화 — getUserMedia 사전 권한 확인(모바일에서 recognition.start() 가 조용히 실패하는 케이스 방지) · onend 자동 재시작(모바일 Chrome 이 짧은 무음에 자동 종료해도 계속 듣게) · 명확한 에러 메시지(권한·마이크 없음·네트워크) · 불필요한 'GitHub 소스' 메뉴 제거" },
@@ -3522,17 +3523,12 @@ async function ensureMicPermission() {
   }
 }
 
-micBtn.addEventListener('click', async () => {
+micBtn.addEventListener('click', () => {
+  // ⚠️ 동기 처리 — await 사용하면 모바일에서 user gesture 만료되어 recognition.start() 가 조용히 실패
   if (recognizing) {
-    _userStoppedVoice = true; // 사용자가 직접 멈춤 — 자동 재시작 X
+    _userStoppedVoice = true;
     try { recognition.stop(); } catch(_){}
     return;
-  }
-  // 모바일에서 권한 사전 확인 (사용자 제스처 안에서 호출되어야 다이얼로그 뜸)
-  const isMobile = /Android|iPhone|iPad|Mobi/.test(navigator.userAgent || '') || window.innerWidth <= 720;
-  if (isMobile) {
-    const ok = await ensureMicPermission();
-    if (!ok) return;
   }
   if (!recognition) recognition = setupRecognition();
   if (!recognition) {
@@ -3686,13 +3682,19 @@ micBtn.addEventListener('click', async () => {
       // 정상 종료 — 무시
     }
   };
+  // 즉시 시각 피드백 (onstart 가 늦거나 안 올 수 있으니)
+  voiceFab.classList.add('recording');
+  showVoiceBubble('', '듣고 있어요…');
   try {
     recognition.start();
   } catch (e) {
     log("warn", "start 오류: " + e.message);
-    // already started 같은 경우 무시 가능
-    if (!String(e.message).includes('started')) {
-      alert("🎙️ 음성 시작 실패: " + e.message);
+    if (String(e.message).includes('started')) {
+      // 이미 시작된 상태 — 정상으로 간주, 그대로 진행
+    } else {
+      voiceFab.classList.remove('recording');
+      hideVoiceBubble();
+      alert("🎙️ 음성 시작 실패: " + e.message + "\n\n주소창 옆 자물쇠 → 마이크 허용 확인 후 다시 시도해주세요.");
     }
   }
 });
