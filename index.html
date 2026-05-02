@@ -3471,6 +3471,10 @@ async function getCurrentParagraphsText() {
 
 // 텍스트로 .docx 파일 만들어 다운로드
 async function exportAsDocx() {
+  // PDF 모드 → 이미지 기반 완전 동일 복제 (표·이미지·폰트·색 모두 그대로)
+  if (currentMode === 'pdf' && pdfState && pdfState.pages && pdfState.pages.length > 0) {
+    return exportPdfAsIdenticalDocx();
+  }
   const lines = await getCurrentParagraphsText();
   const docxLib = await import("https://cdn.jsdelivr.net/npm/docx@9.6.1/+esm");
   const doc = new docxLib.Document({
@@ -3484,6 +3488,68 @@ async function exportAsDocx() {
   const blob = await docxLib.Packer.toBlob(doc);
   downloadBytes(blob, setBaseName() + ".docx",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+}
+
+// 🎯 PDF → 동일 워드 (표·이미지·문자·크기·색 모두 동일) — 한 번에
+// 전략: 각 PDF 페이지를 PNG 로 렌더(현재 canvas 활용) → DOCX 의 각 섹션에 페이지 크기 = PDF 페이지 크기,
+//        전체 페이지를 채우는 ImageRun 으로 삽입. 마진 0. → 화면 100% 동일.
+async function exportPdfAsIdenticalDocx() {
+  showLoading("PDF → 워드 변환 중…", "이미지로 페이지 복제 (완전 동일)");
+  try {
+    const docxLib = await import("https://cdn.jsdelivr.net/npm/docx@9.6.1/+esm");
+    const sections = [];
+    let pi = 0;
+    for (const pg of pdfState.pages) {
+      pi++;
+      showLoading("PDF → 워드 변환 중…", `페이지 ${pi} / ${pdfState.pages.length}`);
+      // edits 가 적용된 현재 canvas (지우개·글씨 모두 반영) 그대로 캡처
+      const dataUrl = pg.canvas.toDataURL('image/png');
+      // base64 → ArrayBuffer
+      const byteStr = atob(dataUrl.split(',')[1]);
+      const ab = new ArrayBuffer(byteStr.length);
+      const u8 = new Uint8Array(ab);
+      for (let i = 0; i < byteStr.length; i++) u8[i] = byteStr.charCodeAt(i);
+
+      // PDF 페이지 크기 (points → twips) 1pt = 20 twips
+      const widthTwips = Math.max(2880, Math.round(pg.pdfPageWidth * 20));
+      const heightTwips = Math.max(2880, Math.round(pg.pdfPageHeight * 20));
+      // ImageRun 의 transformation 은 픽셀 단위로 기대됨. 96 DPI 기준 1pt = 96/72 px = 1.3333 px
+      const widthPx = pg.pdfPageWidth * 96 / 72;
+      const heightPx = pg.pdfPageHeight * 96 / 72;
+
+      sections.push({
+        properties: {
+          page: {
+            size: { width: widthTwips, height: heightTwips },
+            margin: { top: 0, right: 0, bottom: 0, left: 0, header: 0, footer: 0, gutter: 0 },
+          },
+        },
+        children: [
+          new docxLib.Paragraph({
+            spacing: { before: 0, after: 0, line: 240 },
+            children: [
+              new docxLib.ImageRun({
+                data: ab,
+                transformation: { width: widthPx, height: heightPx },
+              }),
+            ],
+          }),
+        ],
+      });
+    }
+    showLoading("PDF → 워드 변환 중…", "워드 파일 생성 중…");
+    const doc = new docxLib.Document({ sections });
+    const blob = await docxLib.Packer.toBlob(doc);
+    hideLoading();
+    downloadBytes(blob, setBaseName() + "_원본동일.docx",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+    log("info", `PDF→Word 동일 복제 완료: ${pdfState.pages.length} 페이지`);
+  } catch (e) {
+    hideLoading();
+    console.error(e);
+    alert("PDF→Word 변환 실패: " + (e && e.message ? e.message : e));
+    throw e;
+  }
 }
 
 // 텍스트로 .hwpx 파일 만들어 다운로드

@@ -745,8 +745,8 @@ def main():
             page.click("#newBtn"); page.wait_for_timeout(150)
             page.click('#newMenu .newm-item[data-fmt="docx"]')
             page.wait_for_function("() => window.__currentMode === 'docx'", timeout=20000)
-            vis = page.evaluate("() => { const b=document.getElementById('voiceFab'); return b && getComputedStyle(b).display !== 'none'; }")
-            step("57. 음성 FAB docx 모드 표시", bool(vis))
+            exists = page.evaluate("() => !!document.getElementById('voiceFab')")
+            step("57. 음성 FAB DOM 존재(v21.2+ 숨김)", exists)
         except Exception as e:
             step("57. 음성 FAB", False, str(e))
 
