@@ -492,17 +492,26 @@ def main():
         except Exception as e:
             step("39. 환영 화면 + 드롭존", False, str(e))
 
-        # ─── 40. 새 문서 .hwpx 다운로드 (첫 사용 — 캐시 없음) ──
+        # ─── 40. 새 문서 .hwpx — 즉시 마운트(docx 편집기) + 타이핑 + .hwpx 저장 ──
         try:
+            _safe_close(page)
             page.click("#newBtn"); page.wait_for_timeout(200)
+            page.click('#newMenu .newm-item[data-fmt="hwpx"]')
+            page.wait_for_function("() => document.querySelectorAll('#docxHost .docx p[contenteditable]').length > 0", timeout=20000)
+            first_p = page.query_selector('#docxHost .docx p[contenteditable]')
+            first_p.click(); page.wait_for_timeout(150)
+            page.keyboard.press("End")
+            page.keyboard.type(" 한글타이핑", delay=15)
+            page.wait_for_timeout(200)
+            txt = page.evaluate("() => document.querySelector('#docxHost .docx p[contenteditable]').textContent")
             with page.expect_download(timeout=30000) as di:
-                page.click('#newMenu .newm-item[data-fmt="hwpx"]')
+                page.click("#saveHwpxBtn")
             dl = di.value
             p = OUT_DIR / "new.hwpx"; dl.save_as(str(p))
             sz = p.stat().st_size if p.exists() else 0
-            step("40. 새 문서 .hwpx 다운로드", sz > 100, f"{sz} bytes")
+            step("40. 새 .hwpx 즉시 편집+저장", sz > 100 and "한글타이핑" in txt, f"{sz} bytes, 본문={txt!r}")
         except Exception as e:
-            step("40. 새 문서 .hwpx 다운로드", False, str(e))
+            step("40. 새 .hwpx 즉시 편집+저장", False, str(e))
 
         # ─── 41. HWP 구버전 로드 ──
         try:
