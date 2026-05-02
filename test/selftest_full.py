@@ -19,6 +19,11 @@ DOCX_SAMPLE = Path(__file__).parent / "sample.docx"
 OUT_DIR = Path(__file__).parent / "out_full"; OUT_DIR.mkdir(exist_ok=True)
 
 
+def _safe_close(page):
+    if page.evaluate("() => !!window.__currentMode"):
+        page.click("#closeBtn")
+        page.wait_for_timeout(400)
+
 def main():
     results = []
     def step(name, ok, detail=""):
@@ -86,7 +91,7 @@ def main():
         step("7. 글자 수 표시", "자" in wc or wc == "", wc)
 
         # ─── 8. 닫기 버튼 → 환영 화면 ────────────
-        page.click("#closeBtn"); page.wait_for_timeout(400)
+        _safe_close(page)
         welc = page.evaluate("() => !document.getElementById('welcome').classList.contains('hidden')")
         step("8. 닫기 → 환영 화면", welc)
 
@@ -177,7 +182,7 @@ def main():
             step("15. 일괄 만들기 버튼", False, str(e))
 
         # ─── 16. PDF 로드 + 썸네일 ─────────────
-        page.click("#closeBtn"); page.wait_for_timeout(300)
+        _safe_close(page)
         try:
             page.set_input_files("#picker", str(PDF))
             page.wait_for_function("() => document.querySelectorAll('#pdfHost canvas').length > 0", timeout=60000)
@@ -265,7 +270,7 @@ def main():
 
         # ─── 23. HWP/HWPX 모드 ─────────────
         try:
-            page.click("#closeBtn"); page.wait_for_timeout(400)
+            _safe_close(page)
             page.wait_for_function("() => window.__editorReady === true", timeout=60000)
             # 콘솔 마커 + 캡처 시작
             msgs_before = len(msgs)
@@ -286,7 +291,7 @@ def main():
 
         # ─── 24. PDF 인쇄 버튼 ──
         try:
-            page.click("#closeBtn"); page.wait_for_timeout(300)
+            _safe_close(page)
             page.set_input_files("#picker", str(PDF))
             page.wait_for_function("() => document.querySelectorAll('#pdfHost canvas').length > 0", timeout=60000)
             errs_before = len(errs)
@@ -341,7 +346,7 @@ def main():
 
         # ─── 29. 음성 입력 robust insertText (DOCX) ──
         try:
-            page.click("#closeBtn"); page.wait_for_timeout(300)
+            _safe_close(page)
             page.click("#newBtn"); page.wait_for_timeout(150)
             page.click('#newMenu .newm-item[data-fmt="docx"]')
             page.wait_for_function("() => document.querySelectorAll('#docxHost .docx p[contenteditable]').length > 0", timeout=20000)
@@ -441,7 +446,7 @@ def main():
 
         # ─── 36. 일괄 버튼 비활성 (PDF 모드) ──
         try:
-            page.click("#closeBtn"); page.wait_for_timeout(300)
+            _safe_close(page)
             page.set_input_files("#picker", str(PDF))
             # mountPdf 완료 대기 (mode='pdf')
             page.wait_for_function("() => window.__currentMode === 'pdf'", timeout=60000)
@@ -481,7 +486,7 @@ def main():
 
         # ─── 39. 환영 화면 드롭존 존재 ──
         try:
-            page.click("#closeBtn"); page.wait_for_timeout(300)
+            _safe_close(page)
             has = page.evaluate("() => !!document.getElementById('dropZone') && !document.getElementById('welcome').classList.contains('hidden')")
             step("39. 환영 화면 + 드롭존", has)
         except Exception as e:
@@ -502,7 +507,7 @@ def main():
         # ─── 41. HWP 구버전 로드 ──
         try:
             if HWP_OLD.exists():
-                page.click("#closeBtn"); page.wait_for_timeout(300)
+                _safe_close(page)
                 page.set_input_files("#picker", str(HWP_OLD))
                 page.wait_for_function("() => window.__currentMode === 'hwp'", timeout=180000)
                 step("41. HWP 구버전 로드", True, ".hwp → mode=hwp")
@@ -571,7 +576,7 @@ def main():
 
         # ─── 47. 글자수 0 표시 (빈 docx) ──
         try:
-            page.click("#closeBtn"); page.wait_for_timeout(300)
+            _safe_close(page)
             page.click("#newBtn"); page.wait_for_timeout(150)
             page.click('#newMenu .newm-item[data-fmt="docx"]')
             page.wait_for_function("() => document.querySelectorAll('#docxHost .docx p[contenteditable]').length > 0", timeout=20000)
@@ -583,7 +588,7 @@ def main():
 
         # ─── 48. 닫기 후 currentMode null ──
         try:
-            page.click("#closeBtn"); page.wait_for_timeout(300)
+            _safe_close(page)
             mode = page.evaluate("() => window.__currentMode")
             step("48. 닫기 후 mode null", mode == None, f"mode={mode}")
         except Exception as e:
@@ -609,7 +614,7 @@ def main():
 
         # ─── 51. 음성 실시간 — SpeechRecognition mock 으로 onresult 시뮬레이션 ──
         try:
-            page.click("#closeBtn"); page.wait_for_timeout(300)
+            _safe_close(page)
             page.click("#newBtn"); page.wait_for_timeout(150)
             page.click('#newMenu .newm-item[data-fmt="docx"]')
             page.wait_for_function("() => document.querySelectorAll('#docxHost .docx p[contenteditable]').length > 0", timeout=20000)
@@ -657,7 +662,7 @@ def main():
 
         # ─── 53. PDF 마우스 드래그 이동 — select 도구 마커 표시 ──
         try:
-            page.click("#closeBtn"); page.wait_for_timeout(300)
+            _safe_close(page)
             page.set_input_files("#picker", str(PDF))
             page.wait_for_function("() => window.__currentMode === 'pdf'", timeout=60000)
             # 글씨 하나 추가
