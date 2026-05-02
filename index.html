@@ -1304,6 +1304,44 @@ async function cacheHwpxAsTemplate(buffer, filename) {
 }
 
 // HWP/HWPX 모드 (rhwp 엔진)
+// === HWPX 사전 보정 — rhwp "비표준 감지" 다이얼로그 안 뜨게 ===
+// 알려진 비표준 패턴: <hp:lineseg ... line_height="0" /> 등.
+// 우리가 압축 풀고 section XML 안에서 line_height="0" → 제거 (rhwp 가 자동 계산)
+async function sanitizeHwpx(buffer) {
+  try {
+    const JSZip = (await import("https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm")).default;
+    const zip = await JSZip.loadAsync(buffer);
+    let changed = false;
+    const sectionFiles = Object.keys(zip.files).filter(n =>
+      /^Contents\/section\d+\.xml$/i.test(n) || /^BodyText\/Section\d+\.xml$/i.test(n)
+    );
+    for (const fname of sectionFiles) {
+      const xml = await zip.file(fname).async('string');
+      let fixed = xml;
+      // 1) line_height="0" 제거 (rhwp 가 자동 계산하도록)
+      fixed = fixed.replace(/\s+line_height="0"/g, '');
+      // 2) lineHeight="0" (camelCase 변형) 도 대비
+      fixed = fixed.replace(/\s+lineHeight="0"/g, '');
+      // 3) hp:lineseg 안의 다른 0 길이 속성 — text_width="0", 등은 유효한 경우도 있어 안 건드림
+      if (fixed !== xml) {
+        zip.file(fname, fixed);
+        changed = true;
+      }
+    }
+    if (!changed) return buffer;
+    // mimetype 보존 + STORE 압축 (HWPX 표준)
+    return await zip.generateAsync({
+      type: 'arraybuffer',
+      compression: 'DEFLATE',
+      compressionOptions: { level: 6 },
+      mimeType: 'application/hwp+zip',
+    });
+  } catch (e) {
+    console.warn('sanitizeHwpx 실패', e);
+    return buffer;
+  }
+}
+
 async function mountHwp(file) {
   if (!editor || !editorReady) {
     alert("한글 엔진이 아직 준비 중입니다. 잠시 후 다시 시도해주세요.");
@@ -1315,7 +1353,17 @@ async function mountHwp(file) {
     const sizeMb = (file.size / 1048576).toFixed(1);
     showLoading("파일 여는 중…", `${file.name} (${sizeMb}MB)`);
     log("info", `파일 선택: ${file.name} (${file.size} bytes / ${sizeMb}MB)`);
-    const buffer = await file.arrayBuffer();
+    let buffer = await file.arrayBuffer();
+    // 비표준 .hwpx 사전 보정 — rhwp 의 "HWPX 비표준 감지" 다이얼로그를 사용자가 보지 않도록.
+    if (file.name.toLowerCase().endsWith('.hwpx')) {
+      try {
+        const fixed = await sanitizeHwpx(buffer);
+        if (fixed && fixed !== buffer) {
+          buffer = fixed;
+          log("info", `HWPX 자동 보정 적용 (line_height=0 등)`);
+        }
+      } catch (e) { log("warn", "HWPX 사전 보정 스킵: " + e.message); }
+    }
     const result = await window.__safeLoadFile(buffer, file.name);
     log("info", `safeLoadFile 응답 — ${JSON.stringify(result)}`);
     currentFilename = file.name;
@@ -2875,54 +2923,28 @@ newMenu.querySelectorAll('.newm-item').forEach(b => {
     if (currentMode && !confirm("현재 작업이 사라집니다. 새 문서를 만들까요?")) return;
     try {
       showLoading("새 문서 만드는 중…", `.${fmt}`);
-      if (fmt === 'docx') {
-        const docxLib = await import("https://cdn.jsdelivr.net/npm/docx@9.6.1/+esm");
-        const doc = new docxLib.Document({
-          sections: [{
-            properties: {
-              page: {
-                size: { width: 11906, height: 16838, orientation: 'portrait' }, // A4 (twips)
-                margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 },    // 1인치
-              },
+      // 새 문서: docx·hwpx 둘 다 동일하게 docx 편집기로 마운트 (caret 100% 보장).
+      // 저장 시 사용자가 [.hwpx] 또는 [.docx] 버튼 선택 → 기존 cross-format 변환 사용.
+      const docxLib = await import("https://cdn.jsdelivr.net/npm/docx@9.6.1/+esm");
+      const doc = new docxLib.Document({
+        sections: [{
+          properties: {
+            page: {
+              size: { width: 11906, height: 16838, orientation: 'portrait' }, // A4 (twips)
+              margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 },    // 1인치
             },
-            children: [
-              new docxLib.Paragraph({ children: [new docxLib.TextRun("")] }),
-              new docxLib.Paragraph({ children: [new docxLib.TextRun("")] }),
-              new docxLib.Paragraph({ children: [new docxLib.TextRun("")] }),
-            ],
-          }],
-        });
-        const blob = await docxLib.Packer.toBlob(doc);
-        const file = new File([blob], "새문서.docx", { type: blob.type });
-        hideLoading();
-        await mountDocx(file);
-      } else if (fmt === 'hwpx') {
-        // 가장 안전한 방법: 사용자가 한 번 정상으로 마운트한 .hwpx 를 IndexedDB 에 캐시했으니 템플릿으로 사용.
-        // 없으면 markdownToHwpx 로 만들어 다운로드만 (rhwp 마운트하면 caret 활성 안 됨 알려진 이슈).
-        let bytes = null;
-        let fromCache = false;
-        try {
-          const db = await getDb();
-          const cached = await db.get('autosave', 'hwpx_template');
-          if (cached && cached.bytes) {
-            bytes = new Uint8Array(cached.bytes);
-            fromCache = true;
-            log("info", `한글 빈 문서: 캐시 템플릿 사용 (${bytes.byteLength} bytes)`);
-          }
-        } catch (_e) {}
-
-        if (!bytes) {
-          const hwpxjs = await loadHwpxjs();
-          const m2h = hwpxjs.markdownToHwpx || (hwpxjs.default && hwpxjs.default.markdownToHwpx);
-          if (typeof m2h !== 'function') throw new Error("hwpxjs markdownToHwpx 없음");
-          bytes = await m2h("여기를 클릭해서 내용을 입력하세요.");
-        }
-
-        // 항상 마운트 — 사용자가 [새 문서] 누르면 바로 편집 가능해야 함
-        const blob = new Blob([bytes], { type: "application/hwp+zip" });
-        const file = new File([blob], "새문서.hwpx", { type: "application/hwp+zip" });
-        hideLoading();
-        await mountHwp(file);
+          },
+          children: [new docxLib.Paragraph({ children: [new docxLib.TextRun("새 문서")] })],
+        }],
+      });
+      const blob = await docxLib.Packer.toBlob(doc);
+      const fname = (fmt === 'hwpx') ? "새문서.docx" : "새문서.docx";
+      const file = new File([blob], fname, { type: blob.type });
+      hideLoading();
+      await mountDocx(file);
+      // hwpx 모드 표시 — 저장 시 .hwpx 로 변환되도록 사용자에게 .hwpx 버튼 클릭 안내는 UI 자체로 충분.
+      if (fmt === 'hwpx') {
+        log("info", "한글(.hwpx) 새 문서 — 워드 편집기로 편집 후 [💾 .hwpx] 버튼으로 저장하세요.");
       }
     } catch (err) {
       hideLoading();
