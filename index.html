@@ -931,7 +931,6 @@
   <div class="ham-list">
     <button class="ham-item" data-act="new-docx"><span class="ico">📝</span>새 워드 (.docx)</button>
     <button class="ham-item" data-act="new-hwpx"><span class="ico">📄</span>새 한글 (.hwpx)</button>
-    <button class="ham-item" data-act="ocr"><span class="ico">📷</span>OCR (글자 추출)</button>
     <button class="ham-item" data-act="ver"><span class="ico">ⓘ</span>업데이트 내역</button>
   </div>
 </aside>
@@ -1586,6 +1585,8 @@ async function mountPdf(file) {
       <button class="tool" data-tool="erase-text" title="드래그한 영역 안의 글자만 골라서 지움 (배경·이미지·선은 그대로)">✂️ 글자만 지우기</button>
       <button class="tool" data-tool="text">✏️ 글씨</button>
       <span class="tool-sep"></span>
+      <button class="tool" id="pdfOcrBtn" title="OCR — 스캔 PDF 또는 이미지 PDF 의 글자를 추출해서 워드로 자동 변환">📷 OCR</button>
+      <span class="tool-sep"></span>
       <button class="tool" id="pdfUndoBtn" disabled>↶ 되돌리기</button>
       <button class="tool" id="pdfRedoBtn" disabled>↷ 다시</button>
       <span class="tool-sep"></span>
@@ -1620,6 +1621,12 @@ async function mountPdf(file) {
     });
     document.getElementById('pdfTextColor').addEventListener('change', (e) => {
       pdfState.color = e.target.value;
+    });
+    // OCR 버튼 (PDF 모드 전용) — 기존 hidden ocrBtn 트리거
+    const pdfOcrBtn = document.getElementById('pdfOcrBtn');
+    if (pdfOcrBtn) pdfOcrBtn.addEventListener('click', () => {
+      const ocrBtn = document.getElementById('ocrBtn');
+      if (ocrBtn) ocrBtn.click();
     });
     // Undo/Redo
     pdfState.undoStack = []; // {pageIdx, edit, snapshotImg}
@@ -4735,7 +4742,6 @@ setMode = function(m) {
   hamDrawer.querySelectorAll('.ham-item').forEach(it => {
     const act = it.dataset.act;
     if (act === 'mic') it.disabled = !has;
-    else if (act === 'ocr') it.disabled = (m !== 'pdf');
     else it.disabled = false;
   });
 };
@@ -4753,7 +4759,6 @@ hamDrawer.querySelectorAll('.ham-item').forEach(item => {
     if (act === 'new-docx') { document.getElementById('newBtn').click(); setTimeout(() => document.querySelector('#newMenu .newm-item[data-fmt="docx"]').click(), 100); }
     else if (act === 'new-hwpx') { document.getElementById('newBtn').click(); setTimeout(() => document.querySelector('#newMenu .newm-item[data-fmt="hwpx"]').click(), 100); }
     else if (act === 'mic') document.getElementById('micBtn').click();
-    else if (act === 'ocr') document.getElementById('ocrBtn').click();
     else if (act === 'ver') document.getElementById('verBtn').click();
   });
 });
