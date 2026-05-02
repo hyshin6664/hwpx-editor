@@ -487,25 +487,17 @@ def main():
         except Exception as e:
             step("39. 환영 화면 + 드롭존", False, str(e))
 
-        # ─── 40. 새 문서 .hwpx 다운로드 또는 마운트 ──
+        # ─── 40. 새 문서 .hwpx 다운로드 (첫 사용 — 캐시 없음) ──
         try:
-            # rhwp 가 부팅되어 있으면 mount, 아니면 download.
-            ready = page.evaluate("() => window.__editorReady === true")
             page.click("#newBtn"); page.wait_for_timeout(200)
-            if ready:
-                # mount 됨 → currentMode='hwp' 대기
+            with page.expect_download(timeout=30000) as di:
                 page.click('#newMenu .newm-item[data-fmt="hwpx"]')
-                page.wait_for_function("() => window.__currentMode === 'hwp'", timeout=120000)
-                step("40. 새 문서 .hwpx (마운트)", True, "mode=hwp")
-            else:
-                with page.expect_download(timeout=30000) as di:
-                    page.click('#newMenu .newm-item[data-fmt="hwpx"]')
-                dl = di.value
-                p = OUT_DIR / "new.hwpx"; dl.save_as(str(p))
-                sz = p.stat().st_size if p.exists() else 0
-                step("40. 새 문서 .hwpx (다운로드)", sz > 100, f"{sz} bytes")
+            dl = di.value
+            p = OUT_DIR / "new.hwpx"; dl.save_as(str(p))
+            sz = p.stat().st_size if p.exists() else 0
+            step("40. 새 문서 .hwpx 다운로드", sz > 100, f"{sz} bytes")
         except Exception as e:
-            step("40. 새 문서 .hwpx", False, str(e))
+            step("40. 새 문서 .hwpx 다운로드", False, str(e))
 
         # ─── 41. HWP 구버전 로드 ──
         try:
@@ -612,6 +604,8 @@ def main():
             except Exception:
                 vnum = 0
             step("50. 헤더 버전 최신", vnum >= 15, ver)
+        except Exception as e:
+            step("50. 헤더 버전 최신", False, str(e))
 
         # ─── 51. 음성 실시간 — SpeechRecognition mock 으로 onresult 시뮬레이션 ──
         try:

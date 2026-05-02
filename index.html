@@ -786,7 +786,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v20<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v20.1<span class="dot"></span></button>
   </div>
   <span class="filename" id="filenameLabel"></span>
   <span id="wordCount" style="margin-left:8px;font-size:11px;color:var(--text-muted);font-weight:500"></span>
@@ -2889,45 +2889,29 @@ newMenu.querySelectorAll('.newm-item').forEach(b => {
         hideLoading();
         await mountDocx(file);
       } else if (fmt === 'hwpx') {
-        // 우선순위:
-        //  1. 사용자가 한 번 정상으로 마운트한 .hwpx 가 IndexedDB 에 캐시되어 있으면 그걸 템플릿으로 사용 (caret 100% 활성 보장)
-        //  2. rhwp 부팅 직후 빈 hwp 추출 → hwpxjs 로 변환 (정상 동작)
-        //  3. markdownToHwpx (마지막 폴백)
+        // 가장 안전한 방법: 사용자가 한 번 정상으로 마운트한 .hwpx 를 IndexedDB 에 캐시했으니 템플릿으로 사용.
+        // 없으면 markdownToHwpx 로 만들어 다운로드만 (rhwp 마운트하면 caret 활성 안 됨 알려진 이슈).
         let bytes = null;
+        let fromCache = false;
         try {
           const db = await getDb();
           const cached = await db.get('autosave', 'hwpx_template');
           if (cached && cached.bytes) {
             bytes = new Uint8Array(cached.bytes);
-            log("info", `한글 빈 문서: 캐시된 템플릿 사용 (${bytes.byteLength} bytes)`);
+            fromCache = true;
+            log("info", `한글 빈 문서: 캐시 템플릿 사용 (${bytes.byteLength} bytes)`);
           }
         } catch (_e) {}
 
-        if (!bytes && editor && editorReady) {
-          // rhwp 에서 빈 hwp 추출 (부팅 직후 = 빈 상태) → hwpx 변환
-          try {
-            const hwpBytes = await editor.exportHwp();
-            if (hwpBytes && hwpBytes.length > 100) {
-              const hwpxjs = await loadHwpxjs();
-              const h2x = hwpxjs.hwpToHwpx || (hwpxjs.default && hwpxjs.default.hwpToHwpx);
-              if (typeof h2x === 'function') {
-                bytes = await h2x(new Uint8Array(hwpBytes), { creator: 'hwpx-editor' });
-                log("info", `한글 빈 문서: rhwp 추출 → hwpxjs 변환 (${bytes.byteLength} bytes)`);
-              }
-            }
-          } catch (e) { log("warn", "rhwp 추출 실패: " + e.message); }
-        }
-
         if (!bytes) {
-          // 마지막 폴백 — markdownToHwpx
           const hwpxjs = await loadHwpxjs();
           const m2h = hwpxjs.markdownToHwpx || (hwpxjs.default && hwpxjs.default.markdownToHwpx);
           if (typeof m2h !== 'function') throw new Error("hwpxjs markdownToHwpx 없음");
           bytes = await m2h("여기를 클릭해서 내용을 입력하세요.");
-          log("warn", "한글 빈 문서: markdownToHwpx 폴백 (caret 활성 안 될 수 있음)");
         }
 
-        if (editor && editorReady) {
+        // 캐시에서 온 경우만 마운트 (caret 100% 보장). 그 외는 다운로드만.
+        if (fromCache && editor && editorReady) {
           const blob = new Blob([bytes], { type: "application/hwp+zip" });
           const file = new File([blob], "새문서.hwpx", { type: "application/hwp+zip" });
           hideLoading();
@@ -2935,7 +2919,7 @@ newMenu.querySelectorAll('.newm-item').forEach(b => {
         } else {
           hideLoading();
           downloadBytes(bytes, "새문서.hwpx", "application/hwp+zip");
-          alert("빈 .hwpx 다운로드되었어요. 받으신 파일을 다시 끌어다 놓으면 편집 가능합니다 (한글 엔진 준비 중).");
+          alert("빈 .hwpx 다운로드되었어요. \n\n팁: 한 번 일반 .hwp/.hwpx 파일을 열면 그게 자동으로 빈 문서 템플릿으로 저장돼서 다음부터는 [새 문서] 클릭만으로 바로 편집 가능합니다.");
         }
       }
     } catch (err) {
