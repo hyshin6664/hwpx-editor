@@ -653,16 +653,8 @@
     /* 작은 폰: scale 적용 (JS 가 동적 계산), 좌우 스크롤 X */
     #docxHost { overflow-x: hidden !important; }
   }
-  /* PC 큰 화면 — A4 페이지를 시각적으로 충분히 크게 (모바일은 위 미디어 쿼리가 처리) */
-  @media (min-width: 1100px) {
-    #docxHost .docx { zoom: 1.25; }
-  }
-  @media (min-width: 1400px) {
-    #docxHost .docx { zoom: 1.4; }
-  }
-  @media (min-width: 1700px) {
-    #docxHost .docx { zoom: 1.55; }
-  }
+  /* PC 큰 화면 — A4 페이지 강조 */
+  /* zoom 은 레이아웃 변형 부작용으로 사용 안 함. 모든 시각 크기는 mountDocx 의 fitDocxToViewport 에서 transform 으로 처리. */
 
   /* 모바일 — 폰트 16px 이상 강제 (iOS 자동 줌 방지) */
   @media (max-width: 720px) {
@@ -821,7 +813,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v20.6<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v20.7<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="이 편집기를 PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가합니다 — 다음부터 한 번에 열기" hidden>📌 바탕화면에 추가</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -2184,6 +2176,18 @@ async function mountDocx(file) {
       breakPages: true, useBase64URL: true,
     });
     log("info", `docx-preview 렌더링 완료`);
+    // 모든 section 에 표준 A4 폭(794px) 강제 — 일부 .docx 가 sectPr 에 width 누락한 경우 대비
+    // setTimeout 으로 docx-preview 가 styleHost 에 늦게 주입하는 width 룰을 덮어쓰기
+    const _forceA4 = () => {
+      docxHost.querySelectorAll('section').forEach(sec => {
+        sec.style.setProperty('width', '794px', 'important');
+        sec.style.setProperty('box-sizing', 'border-box', 'important');
+        if (!sec.style.minHeight) sec.style.setProperty('min-height', '1123px', 'important');
+      });
+    };
+    _forceA4();
+    setTimeout(_forceA4, 50);
+    setTimeout(_forceA4, 300);
 
     // 렌더된 <p> 들을 contenteditable + index 로 XML 매핑
     const renderedPs = wrap.querySelectorAll('p');
@@ -2891,11 +2895,10 @@ setMode = function(m) {
     deferred = null;
   });
 
-  // iOS Safari — beforeinstallprompt 미지원. 그래도 버튼 보이고, 클릭 시 안내 모달.
-  if (isIOS) installBtn.hidden = false;
-  // Safari macOS — 버튼 보이고, 안내 모달
+  // 항상 표시 — beforeinstallprompt 가 안 와도 사용자에게 안내 모달 띄울 수 있음
+  // (이미 설치된 경우는 위에서 isStandalone 으로 차단됨)
+  installBtn.hidden = false;
   const isSafari = /Safari\//.test(ua) && !/Chrome|Chromium|Edg\//.test(ua);
-  if (isSafari && !isIOS) installBtn.hidden = false;
 
   installBtn.addEventListener('click', async () => {
     if (deferred) {
@@ -2907,31 +2910,47 @@ setMode = function(m) {
       deferred = null;
       return;
     }
-    // 안내 모달 (iOS Safari, macOS Safari, 또는 prompt 미지원)
-    showInstallGuide(isIOS);
+    // 안내 모달 (prompt 미지원 — iOS Safari, macOS Safari, Android Chrome 미충족 등)
+    const isAndroid = /Android/.test(ua);
+    showInstallGuide(isIOS ? 'ios' : isAndroid ? 'android' : 'pc');
   });
 
-  function showInstallGuide(ios) {
+  function showInstallGuide(kind) {
     const wrap = document.createElement('div');
     wrap.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;';
+    const iosHTML = `
+      <p style="margin:0 0 12px;font-size:14px;color:#5b5876;line-height:1.6;">
+        <b>아이폰·아이패드 (Safari)</b><br>
+        ① 화면 아래 <b>공유 버튼</b> <span style="font-size:18px;">⬆️</span> 누르기<br>
+        ② <b>"홈 화면에 추가"</b> 선택<br>
+        ③ 이름 확인 후 <b>"추가"</b>
+      </p>
+      <p style="margin:0;font-size:13px;color:#8a86a3;">홈 화면에서 일반 앱처럼 한 번에 열립니다.</p>`;
+    const androidHTML = `
+      <p style="margin:0 0 12px;font-size:14px;color:#5b5876;line-height:1.6;">
+        <b>안드로이드 (크롬)</b><br>
+        ① 우상단 <b>⋮ 점 3개</b> 누르기<br>
+        ② <b>"홈 화면에 추가"</b> 또는 <b>"앱 설치"</b><br>
+        ③ <b>"설치"</b> 누르기
+      </p>
+      <p style="margin:0 0 8px;font-size:14px;color:#5b5876;line-height:1.6;">
+        <b>안드로이드 (삼성 인터넷)</b><br>
+        ① 하단 <b>≡ 메뉴</b> → ② <b>"+ 페이지 추가"</b> → <b>"홈 화면"</b>
+      </p>
+      <p style="margin:0;font-size:13px;color:#8a86a3;">홈 화면에서 일반 앱처럼 한 번에 열립니다.</p>`;
+    const pcHTML = `
+      <p style="margin:0 0 12px;font-size:14px;color:#5b5876;line-height:1.6;">
+        <b>크롬·엣지</b> · 주소창 오른쪽의 <b>⊕ 설치 아이콘</b> 클릭<br>
+        또는 <b>⋮ 메뉴 → "Solbox Docs 설치"</b><br><br>
+        <b>Mac (Safari)</b> · 메뉴 [파일] → [Dock에 추가]<br>
+        또는 [홈 화면에 추가]
+      </p>
+      <p style="margin:0;font-size:13px;color:#8a86a3;">바탕화면 / Dock 에서 한 번에 열립니다.</p>`;
+    const inner = kind === 'ios' ? iosHTML : kind === 'android' ? androidHTML : pcHTML;
     wrap.innerHTML = `
       <div style="background:#fff;border-radius:18px;max-width:440px;width:100%;padding:24px;box-shadow:0 12px 40px rgba(0,0,0,.25);font-family:inherit;">
         <h3 style="margin:0 0 12px;font-size:18px;font-weight:700;color:#3b3654;">📌 바로가기 만들기</h3>
-        ${ios ? `
-          <p style="margin:0 0 12px;font-size:14px;color:#5b5876;line-height:1.6;">
-            <b>아이폰·아이패드 (Safari)</b><br>
-            ① 화면 아래 <b>공유 버튼</b> <span style="font-size:18px;">⬆️</span> 누르기<br>
-            ② <b>"홈 화면에 추가"</b> 선택<br>
-            ③ 이름 확인 후 <b>"추가"</b>
-          </p>
-          <p style="margin:0;font-size:13px;color:#8a86a3;">홈 화면에서 일반 앱처럼 한 번에 열립니다.</p>
-        ` : `
-          <p style="margin:0 0 12px;font-size:14px;color:#5b5876;line-height:1.6;">
-            <b>Mac (Safari)</b> · 메뉴 [파일] → [Dock에 추가] 또는 [홈 화면에 추가]<br><br>
-            <b>크롬·엣지</b> · 주소창 오른쪽의 <b>설치 아이콘</b> 또는 <b>⋮ 메뉴 → "Solbox Docs 설치"</b>
-          </p>
-          <p style="margin:0;font-size:13px;color:#8a86a3;">바탕화면 / Dock 에서 한 번에 열립니다.</p>
-        `}
+        ${inner}
         <div style="display:flex;justify-content:flex-end;margin-top:18px;">
           <button class="install-close-btn" style="background:#c7b8ee;color:#fff;border:0;padding:8px 18px;border-radius:8px;font-weight:700;cursor:pointer;">확인</button>
         </div>
@@ -2944,6 +2963,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v20.7", date: "2026-05-02", desc: "📐 워드/한글 새 문서 페이지 폭 표준 A4 (794px) 강제 — docx-preview 가 폭 누락하는 문제 보정 (CSS zoom 부작용 제거, transform 기반 모바일 자동 축소) · 📱 fitDocxToViewport 로 ≤720px 자동 fit (≤480 → 720 까지 모바일 처리 확장) · 📌 바로가기 버튼 모든 기기 항상 표시 (안드로이드 안내 모달 추가, prompt 미충족 사용자도 수동 설치 가능)" },
   { version: "v20.6", date: "2026-05-02", desc: "🔄 서비스 워커 network-first(HTML) — 사용자 재방문 시 항상 최신 버전 받음 (이전 버전은 SW 가 옛 index.html 캐시해서 새 배포가 안 보였던 버그 수정) · SW 업데이트 자동 감지 + 1회 새로고침 · 재방문 시나리오 자체 테스트(#70-pre) 영구 등록" },
   { version: "v20.5", date: "2026-05-02", desc: "🖥 PC에서 워드 페이지 시각적으로 충분히 크게 (1100px+ → 1.25배, 1400px+ → 1.4배, 1700px+ → 1.55배 zoom) — 모바일은 기존 fitDocxToViewport 그대로 · 📌 바로가기 버튼 기기에 따라 자동 라벨 (PC '바탕화면에 추가' / 모바일 '홈 화면에 추가') + 더 친절한 툴팁" },
   { version: "v20.4", date: "2026-05-02", desc: "📌 바로가기 만들기 버튼 추가 — PC 바탕화면 / Mac Dock / 모바일 홈 화면에 한 번에 설치 (PWA, 서비스 워커, manifest) · iOS Safari·macOS Safari 안내 모달 자동 분기" },
@@ -3071,8 +3091,8 @@ newMenu.querySelectorAll('.newm-item').forEach(b => {
         sections: [{
           properties: {
             page: {
-              size: { width: 11906, height: 16838, orientation: 'portrait' }, // A4 (twips)
-              margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 },    // 1인치
+              size: { width: 11906, height: 16838 }, // A4 in twips — docx 기본 단위
+              margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 },
             },
           },
           children: [new docxLib.Paragraph({ children: [new docxLib.TextRun("새 문서")] })],
@@ -3566,36 +3586,37 @@ syncVoiceFabVisibility();
 // DOCX 모바일 화면 자동 맞춤 (≤480px → scale, 481~720 → 좌우 스크롤)
 // =============================================================
 function fitDocxToViewport() {
-  const docxRoot = document.querySelector('#docxHost .docx');
-  if (!docxRoot) return;
   const host = document.getElementById('docxHost');
   if (!host) return;
-  // 작은 폰 (≤480px) — scale 적용
-  if (window.innerWidth <= 480) {
-    // 현재 transform 제거하고 자연 폭 측정
-    docxRoot.style.transform = '';
-    docxRoot.style.width = '';
-    docxRoot.style.height = '';
-    // 첫 section 의 자연 폭
-    const firstChild = docxRoot.querySelector('section') || docxRoot.firstElementChild;
-    if (!firstChild) return;
-    const naturalW = firstChild.offsetWidth;
-    if (naturalW <= 0) return;
+  // .docx 가 section 자체일 수도, 그 부모일 수도 — 둘 다 대응
+  const sections = host.querySelectorAll('section');
+  if (sections.length === 0) return;
+  // scale 대상 = section들을 감싸는 가장 가까운 공통 조상 (보통 .docx-wrapper 또는 wrap div)
+  const scaleTarget = sections[0].parentElement; // section 의 직접 부모 (docx-wrapper)
+  const naturalW = sections[0].offsetWidth;
+  if (naturalW <= 0) return;
+
+  const reset = () => {
+    if (scaleTarget) {
+      scaleTarget.style.transform = '';
+      scaleTarget.style.width = '';
+      scaleTarget.style.height = '';
+    }
+  };
+
+  if (window.innerWidth <= 720) { // 모바일 + 작은 태블릿
+    reset();
     const containerW = host.clientWidth - 8;
     if (naturalW > containerW) {
       const scale = containerW / naturalW;
-      docxRoot.style.transformOrigin = 'top left';
-      docxRoot.style.transform = `scale(${scale})`;
-      docxRoot.style.width = naturalW + 'px';
-      const naturalH = docxRoot.scrollHeight;
-      // 컨테이너 높이도 scale 비율로 조정 (스크롤 정확하게)
-      docxRoot.style.height = (naturalH * scale) + 'px';
+      scaleTarget.style.transformOrigin = 'top left';
+      scaleTarget.style.transform = `scale(${scale})`;
+      scaleTarget.style.width = naturalW + 'px';
+      const naturalH = scaleTarget.scrollHeight;
+      scaleTarget.style.height = (naturalH * scale) + 'px';
     }
   } else {
-    // 데스크톱 / 태블릿 — transform 제거 (overflow-x:auto 가 알아서)
-    docxRoot.style.transform = '';
-    docxRoot.style.width = '';
-    docxRoot.style.height = '';
+    reset();
   }
 }
 let _resizeTimer = null;
