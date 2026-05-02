@@ -814,7 +814,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v20.8<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v20.9<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="이 편집기를 PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가합니다 — 다음부터 한 번에 열기" hidden>📌 바탕화면에 추가</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -877,7 +877,6 @@
     <button class="ham-item" data-act="ocr"><span class="ico">📷</span>OCR (글자 추출)</button>
     <button class="ham-item" data-act="merge"><span class="ico">📨</span>양식 일괄 만들기</button>
     <button class="ham-item" data-act="ver"><span class="ico">ⓘ</span>업데이트 내역</button>
-    <button class="ham-item" data-act="github"><span class="ico">🐙</span>GitHub 소스</button>
   </div>
 </aside>
 
@@ -2964,6 +2963,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v20.9", date: "2026-05-02", desc: "🎙️ 모바일 음성 입력 안정화 — getUserMedia 사전 권한 확인(모바일에서 recognition.start() 가 조용히 실패하는 케이스 방지) · onend 자동 재시작(모바일 Chrome 이 짧은 무음에 자동 종료해도 계속 듣게) · 명확한 에러 메시지(권한·마이크 없음·네트워크) · 불필요한 'GitHub 소스' 메뉴 제거" },
   { version: "v20.8", date: "2026-05-02", desc: "📌 안드로이드 한 번 클릭 설치 가능하게 수정 — manifest 의 data: URL 아이콘 → 실 SVG 파일(icon-192.svg, icon-512.svg)로 교체. Chrome 의 PWA 설치 자격 충족 → beforeinstallprompt 이벤트 정상 발화. iOS 는 Apple 이 API 자체를 차단해서 안내 모달이 한계." },
   { version: "v20.7", date: "2026-05-02", desc: "📐 워드/한글 새 문서 페이지 폭 표준 A4 (794px) 강제 — docx-preview 가 폭 누락하는 문제 보정 (CSS zoom 부작용 제거, transform 기반 모바일 자동 축소) · 📱 fitDocxToViewport 로 ≤720px 자동 fit (≤480 → 720 까지 모바일 처리 확장) · 📌 바로가기 버튼 모든 기기 항상 표시 (안드로이드 안내 모달 추가, prompt 미충족 사용자도 수동 설치 가능)" },
   { version: "v20.6", date: "2026-05-02", desc: "🔄 서비스 워커 network-first(HTML) — 사용자 재방문 시 항상 최신 버전 받음 (이전 버전은 SW 가 옛 index.html 캐시해서 새 배포가 안 보였던 버그 수정) · SW 업데이트 자동 감지 + 1회 새로고침 · 재방문 시나리오 자체 테스트(#70-pre) 영구 등록" },
@@ -3371,20 +3371,54 @@ function hideVoiceBubble() {
 micBtn.addEventListener('mousedown', (e) => e.preventDefault());
 micBtn.addEventListener('touchstart', (e) => e.preventDefault());
 
+// 모바일 자동 종료 시 재시작 플래그
+let _userStoppedVoice = false;
+let _voicePermChecked = false;
+
 // 자체 테스트용 — 기존 recognition 강제 제거 후 재생성
 window.__resetVoiceRecognition = () => {
   if (recognition) { try { recognition.stop(); } catch(_){} }
   recognition = null;
   recognizing = false;
+  _userStoppedVoice = false;
 };
 
-micBtn.addEventListener('click', () => {
-  if (!recognition) recognition = setupRecognition();
-  if (!recognition) {
-    alert("이 브라우저는 음성 입력을 지원하지 않습니다 (크롬·엣지 권장)");
+// 마이크 권한 사전 확인 (모바일에서 recognition.start() 가 조용히 실패하는 케이스 방지)
+async function ensureMicPermission() {
+  if (_voicePermChecked) return true;
+  try {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      _voicePermChecked = true; return true; // 권한 API 없으면 그냥 진행
+    }
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    stream.getTracks().forEach(t => t.stop());
+    _voicePermChecked = true;
+    return true;
+  } catch (e) {
+    log("warn", "마이크 권한 거부: " + e.message);
+    alert("🎙️ 음성 입력하려면 마이크 권한이 필요합니다.\n\n주소창 옆 자물쇠/마이크 아이콘 → 마이크 허용 → 다시 시도해주세요.");
+    return false;
+  }
+}
+
+micBtn.addEventListener('click', async () => {
+  if (recognizing) {
+    _userStoppedVoice = true; // 사용자가 직접 멈춤 — 자동 재시작 X
+    try { recognition.stop(); } catch(_){}
     return;
   }
-  if (recognizing) { recognition.stop(); return; }
+  // 모바일에서 권한 사전 확인 (사용자 제스처 안에서 호출되어야 다이얼로그 뜸)
+  const isMobile = /Android|iPhone|iPad|Mobi/.test(navigator.userAgent || '') || window.innerWidth <= 720;
+  if (isMobile) {
+    const ok = await ensureMicPermission();
+    if (!ok) return;
+  }
+  if (!recognition) recognition = setupRecognition();
+  if (!recognition) {
+    alert("이 브라우저는 음성 입력을 지원하지 않습니다.\n크롬·엣지·Safari 14+ 권장");
+    return;
+  }
+  _userStoppedVoice = false;
 
   // target 결정 (active → savedTarget → 자동 첫 편집가능 요소)
   let target = document.activeElement;
@@ -3494,11 +3528,21 @@ micBtn.addEventListener('click', () => {
     log("info", "🎙️ 음성 입력 시작 (한국어, 실시간)");
   };
   recognition.onend = () => {
+    // 사용자가 직접 멈춘 게 아니고, 여전히 인식 모드면 → 자동 재시작
+    // (모바일 Chrome 은 짧은 무음 후 자동 종료. 계속 듣게 하려면 재시작 필수)
+    if (!_userStoppedVoice && recognizing) {
+      try {
+        recognition.start();
+        log("info", "음성 자동 재시작");
+        return;
+      } catch (e) {
+        log("warn", "자동 재시작 실패: " + e.message);
+      }
+    }
     recognizing = false;
     micBtn.style.background = ''; micBtn.style.color = '';
     micBtn.title = '음성 입력 (한국어)';
     voiceFab.classList.remove('recording');
-    // interim 으로 본문에 떠있던 회색 텍스트 정리 (final 안 와서 남았다면)
     clearInterim();
     setTimeout(hideVoiceBubble, 800);
     log("info", "음성 입력 종료");
@@ -3506,16 +3550,30 @@ micBtn.addEventListener('click', () => {
   recognition.onerror = (e) => {
     log("warn", "음성 인식 오류: " + e.error);
     if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
-      alert("마이크 권한이 거부되었습니다. 주소창 자물쇠 아이콘에서 마이크 허용 후 다시 시도해주세요.");
+      _userStoppedVoice = true;
+      _voicePermChecked = false;
+      alert("🎙️ 마이크 권한이 거부됨\n\n주소창 옆 자물쇠/마이크 아이콘 → 마이크 허용 → 다시 시도해주세요.");
     } else if (e.error === 'no-speech') {
-      // 무시 (음성 없음)
+      // 무시 — onend 가 자동 재시작
     } else if (e.error === 'audio-capture') {
-      alert("마이크를 찾을 수 없습니다. 마이크 연결 확인 후 다시 시도.");
+      _userStoppedVoice = true;
+      alert("🎙️ 마이크를 찾을 수 없습니다.\n마이크 연결 또는 권한 확인 후 다시 시도해주세요.");
     } else if (e.error === 'network') {
-      alert("음성 인식 네트워크 오류");
+      // 네트워크 오류 — 인식 서비스 일시 장애. 자동 재시작 시도.
+      log("warn", "네트워크 오류, 재시작 시도");
+    } else if (e.error === 'aborted') {
+      // 정상 종료 — 무시
     }
   };
-  try { recognition.start(); } catch (e) { log("warn", "start 오류: " + e.message); }
+  try {
+    recognition.start();
+  } catch (e) {
+    log("warn", "start 오류: " + e.message);
+    // already started 같은 경우 무시 가능
+    if (!String(e.message).includes('started')) {
+      alert("🎙️ 음성 시작 실패: " + e.message);
+    }
+  }
 });
 
 // 모든 종류의 편집 대상에 안정적으로 텍스트 삽입
@@ -3967,7 +4025,6 @@ hamDrawer.querySelectorAll('.ham-item').forEach(item => {
     else if (act === 'ocr') document.getElementById('ocrBtn').click();
     else if (act === 'merge') document.getElementById('mergeBtn').click();
     else if (act === 'ver') document.getElementById('verBtn').click();
-    else if (act === 'github') window.open('https://github.com/hyshin6664/hwpx-editor', '_blank');
   });
 });
 
