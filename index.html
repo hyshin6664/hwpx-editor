@@ -858,7 +858,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v21.8<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v21.9<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -3460,6 +3460,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v21.9", date: "2026-05-03", desc: "📷 OCR 흐름 전면 개편 — 옛날 ‘페이지 이미지 + 텍스트 paragraph’ 박기 방식 폐기. 이제 OCR 도 우리 PDF→Word 표 구조 추출 변환을 사용 (그림이 아닌 진짜 표·셀·편집가능 텍스트). · 변환 결과 다운로드 X → 앱 안에서 워드 모드로 직접 띄움 (사용자가 그림인지 표인지 즉시 확인). · 텍스트 PDF 면 OCR 없이 바로 변환 가능 안내 표시" },
   { version: "v21.8", date: "2026-05-03", desc: "🎯 PDF → 워드 변환 고충실도 — getOperatorList 분석으로 표 테두리(constructPath/stroke) + 셀 배경색(fill) + 텍스트 색(setFillRGBColor) 자동 추출. DOCX 셀 shading + 텍스트 color 직접 적용. 검증: 예약이체 PDF 의 회색 헤더(#DEDEDE) 셀 배경이 워드에서도 회색으로 정확히 재현됨. 색상 정규화 (0-1/0-255/0-65535 모두 처리). · 📷 OCR 버튼 햄버거에서 PDF 툴바로 이동 (PDF 모드 전용)" },
   { version: "v21.7", date: "2026-05-03", desc: "✂️ 글자만 지우기 — 사용자가 [✏️ 글씨] 도구로 직접 입력한 색깔 텍스트(빨강/파랑/초록 등)도 함께 지워짐. 원본 PDF textBoxes(pdfjs.getTextContent) + 사용자 text edits(pg.edits.filter(type='text')) 둘 다 intersection 검사. row-by-row 배경 클론은 색깔과 무관하게 항상 동작 (주변 배경색만 보고 단색 복제)" },
   { version: "v21.6", date: "2026-05-02", desc: "✂️ PDF 글자만 지우기 — 150개 실제 PDF textBox 검증 100% 완벽 (사람 눈 분간 불가). 알고리즘 전면 교체: row-by-row 배경 클론 (각 y행마다 bbox 좌우 픽셀에서 MODE 색 결정 → 단순 복사로 한 줄 채움). 외곽선 뭉개기 안 함. 동적 PAD(글자높이의 25%) 로 가는 글자(`)`, `.`, `,`)도 흔적 0. 표 테두리·검은 선 같은 outlier 는 MODE 가 자동 무시." },
@@ -3695,7 +3696,8 @@ async function exportAsDocx() {
 // 3) 여러 행이 비슷한 X 컬럼 위치를 공유 → 표로 인식 → DOCX Table
 // 4) 표 아닌 행은 일반 단락
 // 5) 페이지 배경(이미지·로고 등 텍스트 아닌 영역)은 캡처해서 헤더에 박음 → 시각 일치
-async function exportPdfAsIdenticalDocx() {
+async function exportPdfAsIdenticalDocx(opts) {
+  // opts: { returnBlobInsteadOfDownload: bool } — true 면 다운로드 안 하고 Blob 반환
   showLoading("PDF → 편집 가능한 워드 변환 중…", "표·텍스트 구조 분석");
   try {
     const docxLib = await import("https://cdn.jsdelivr.net/npm/docx@9.6.1/+esm");
@@ -3918,9 +3920,12 @@ async function exportPdfAsIdenticalDocx() {
     const doc = new docxLib.Document({ sections });
     const blob = await docxLib.Packer.toBlob(doc);
     hideLoading();
+    log("info", `PDF→Word 변환(편집가능) 완료: ${pdfState.pages.length} 페이지`);
+    if (opts && opts.returnBlobInsteadOfDownload) {
+      return blob; // 호출자(OCR 등) 가 직접 처리
+    }
     downloadBytes(blob, setBaseName() + "_편집가능.docx",
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
-    log("info", `PDF→Word 변환(편집가능) 완료: ${pdfState.pages.length} 페이지`);
   } catch (e) {
     hideLoading();
     console.error(e);
@@ -4752,7 +4757,13 @@ let _tesseractMod = null;
 ocrBtn.addEventListener('click', async () => {
   if (currentMode !== 'pdf') return alert("OCR 은 현재 PDF 모드에서만 동작합니다");
   if (!pdfState || !pdfState.pages || pdfState.pages.length === 0) return;
-  if (!confirm("OCR 라이브러리(약 10MB) 다운로드 후 모든 페이지를 인식해 워드(.docx) 로 변환합니다 (페이지 이미지 + 추출된 글자 모두 포함). 진행할까요?")) return;
+  // 텍스트 이미 있는 PDF 면 OCR 불필요 안내
+  const hasText = pdfState.pages.some(p => (p.textBoxes || []).length > 5);
+  if (hasText) {
+    if (!confirm("이 PDF 에는 이미 텍스트가 있어 OCR 없이 바로 표/텍스트 추출 가능합니다.\n\n[💾 저장 → .docx] 를 그냥 누르면 표 구조 그대로 워드로 변환됩니다.\n\n그래도 OCR 진행할까요? (시간 더 걸림)")) return;
+  } else {
+    if (!confirm("스캔/이미지 PDF 입니다. OCR 라이브러리(약 10MB) 받은 후 글자 인식 → 표 구조 추출 워드 변환합니다. 진행할까요?")) return;
+  }
   const orig = ocrBtn.innerHTML;
   ocrBtn.disabled = true;
   ocrBtn.innerHTML = '<span class="ico">⏳</span><span class="label">OCR 중…</span>';
@@ -4763,60 +4774,44 @@ ocrBtn.addEventListener('click', async () => {
     }
     const Tesseract = _tesseractMod.default || _tesseractMod;
     const totalPages = pdfState.pages.length;
-    const pageData = []; // { imgBlob, imgWH, text }
+    // 각 페이지 OCR → words(bbox) 추출 → 우리 textBoxes 형태로 변환 → pg.textBoxes 에 주입
     for (let i = 0; i < totalPages; i++) {
       const pg = pdfState.pages[i];
       showLoading(`OCR 진행 중…`, `${i + 1} / ${totalPages} 페이지 인식`);
       const dataUrl = pg.canvas.toDataURL('image/png');
-      const result = await Tesseract.recognize(dataUrl, 'kor+eng');
-      const imgBlob = await (await fetch(dataUrl)).blob();
-      const imgBuf = await imgBlob.arrayBuffer();
-      pageData.push({
-        imgBuf,
-        width: pg.canvas.width, height: pg.canvas.height,
-        text: result.data.text || ''
+      const result = await Tesseract.recognize(dataUrl, 'kor+eng', {
+        // word-level bbox 가져오기
       });
-    }
-
-    showLoading("워드 문서 만드는 중…", `${totalPages} 페이지 → .docx`);
-    // docx 라이브러리로 페이지마다 [이미지 + OCR 텍스트] 구성
-    const docxLib = await import("https://cdn.jsdelivr.net/npm/docx@9.6.1/+esm");
-    const { Document, Packer, Paragraph, TextRun, ImageRun, PageBreak } = docxLib;
-    const sectionChildren = [];
-    pageData.forEach((p, idx) => {
-      // A4 페이지 가로 (포인트 96 dpi → docx EMU). 단순화: 600 픽셀로 스케일
-      const targetW = 600;
-      const ratio = targetW / p.width;
-      const targetH = Math.round(p.height * ratio);
-      // 이미지
-      sectionChildren.push(new Paragraph({
-        children: [new ImageRun({
-          data: p.imgBuf,
-          transformation: { width: targetW, height: targetH },
-        })],
+      const words = (result.data.words || []).filter(w => w.text && w.text.trim());
+      // OCR words → textBoxes (이미 textBoxes 가 있으면 추가하지 않고 OCR 만 사용 시에만)
+      const ocrBoxes = words.map(w => ({
+        str: w.text,
+        x: w.bbox.x0,
+        y: w.bbox.y0,
+        w: w.bbox.x1 - w.bbox.x0,
+        h: w.bbox.y1 - w.bbox.y0,
+        color: [0, 0, 0],
       }));
-      // 추출 텍스트
-      const lines = (p.text || '').split(/\r?\n/).filter(l => l.trim());
-      lines.forEach(line => sectionChildren.push(new Paragraph({ children: [new TextRun(line)] })));
-      // 페이지 구분
-      if (idx < pageData.length - 1) {
-        sectionChildren.push(new Paragraph({ children: [new PageBreak()] }));
+      // 기존 textBoxes 가 충분하면 OCR 결과 보충, 없으면 OCR 만 사용
+      if ((pg.textBoxes || []).length < 5) {
+        pg.textBoxes = ocrBoxes;
+      } else {
+        // OCR 결과를 추가하지 않음 (이미 있으니 더 정확)
       }
-    });
-    const doc = new Document({ sections: [{ properties: {}, children: sectionChildren }] });
-    const blob = await Packer.toBlob(doc);
-
+    }
+    // 우리 PDF→Word 표 구조 추출 변환 호출 (그림 박기 X, 표·텍스트 분리)
+    showLoading("워드 변환 중…", "표·셀·텍스트 구조 분석");
+    const docxBlob = await exportPdfAsIdenticalDocx({ returnBlobInsteadOfDownload: true });
     hideLoading();
-    // 다운로드 + 즉시 워드 모드로 띄움
+    // 다운로드 X — 앱 안에서 워드 모드로 직접 마운트 (사용자가 표/그림 확실히 구분 가능)
     const fname = setBaseName() + "_OCR.docx";
-    downloadBytes(blob, fname, blob.type || 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-    // 자동으로 워드 모드 마운트
-    const file = new File([blob], fname, { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
-    showLoading("워드 모드로 띄우는 중…", "페이지 이미지 + 추출 글자가 함께 표시됩니다");
-    setTimeout(async () => {
-      try { await mountDocx(file); } catch(_e) {}
-      hideLoading();
-    }, 300);
+    const file = new File([docxBlob], fname, {
+      type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    });
+    showLoading("워드 모드로 띄우는 중…", "표·텍스트가 편집 가능한 형태로 표시됩니다");
+    await mountDocx(file);
+    hideLoading();
+    log("info", `OCR → 워드 변환 완료: ${pdfState ? pdfState.pages.length : 0} 페이지 (앱 내 표시)`);
   } catch (err) {
     hideLoading();
     console.error(err);
