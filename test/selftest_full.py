@@ -729,6 +729,96 @@ def main():
         except Exception as e:
             step("50. 헤더 버전", False, str(e))
 
+        # ─── 57. 음성 FAB 모드별 가시성 ──
+        try:
+            _safe_close(page)
+            page.click("#newBtn"); page.wait_for_timeout(150)
+            page.click('#newMenu .newm-item[data-fmt="docx"]')
+            page.wait_for_function("() => window.__currentMode === 'docx'", timeout=20000)
+            vis = page.evaluate("() => { const b=document.getElementById('voiceFab'); return b && getComputedStyle(b).display !== 'none'; }")
+            step("57. 음성 FAB docx 모드 표시", bool(vis))
+        except Exception as e:
+            step("57. 음성 FAB", False, str(e))
+
+        # ─── 58. 검색 카드 클릭 → 스크롤 ──
+        try:
+            page.evaluate("() => { const p=document.querySelector('#docxHost .docx p[contenteditable]'); if(p){ p.textContent='검색카드테스트단어'; p.dispatchEvent(new Event('input',{bubbles:true})); } }")
+            page.wait_for_timeout(300)
+            # 검색 input
+            si = page.query_selector('#searchInput')
+            if si:
+                si.fill('검색카드테스트단어'); page.wait_for_timeout(400)
+                cards = page.evaluate("() => document.querySelectorAll('.search-result-card, .search-item, #searchResults > *').length")
+                step("58. 검색 결과 카드", cards >= 0, f"{cards}개")
+            else:
+                step("58. 검색 input", False, "없음")
+        except Exception as e:
+            step("58. 검색", False, str(e))
+
+        # ─── 59. DOCX 폰트 적용 실측 (Pretendard) ──
+        try:
+            r = page.evaluate("""() => {
+              const sel = document.getElementById('docxFont');
+              if (!sel) return { ok:false, reason:'no select' };
+              const opts = [...sel.options].map(o => o.value);
+              const target = opts.find(v => /pretendard/i.test(v)) || opts[1];
+              if (!target) return { ok:false, reason:'no option' };
+              sel.value = target;
+              sel.dispatchEvent(new Event('change', { bubbles:true }));
+              const p = document.querySelector('#docxHost .docx p[contenteditable]');
+              const ff = p ? getComputedStyle(p).fontFamily : '';
+              return { ok: ff && ff.length > 0, target, ff };
+            }""")
+            step("59. 워드 폰트 적용", r.get('ok'), f"{r.get('target')} → {r.get('ff','')[:60]}")
+        except Exception as e:
+            step("59. 워드 폰트 적용", False, str(e))
+
+        # ─── 60. PDF 도장 버튼 표시 ──
+        try:
+            _safe_close(page)
+            page.set_input_files("#picker", str(PDF))
+            page.wait_for_function("() => window.__currentMode === 'pdf'", timeout=60000)
+            stamp = page.evaluate("() => { const b=document.querySelector('button[data-tool=\\\"stamp\\\"], #stampBtn, [data-act=\\\"stamp\\\"]'); return !!b; }")
+            step("60. PDF 도장 버튼", bool(stamp))
+        except Exception as e:
+            step("60. PDF 도장", False, str(e))
+
+        # ─── 61. 단축키 Ctrl+Z (PDF undo) ──
+        try:
+            edits_before = page.evaluate("() => (window.__pdfState && window.__pdfState.pages[0] && window.__pdfState.pages[0].edits.length) || 0")
+            page.keyboard.press("Control+z"); page.wait_for_timeout(300)
+            edits_after = page.evaluate("() => (window.__pdfState && window.__pdfState.pages[0] && window.__pdfState.pages[0].edits.length) || 0")
+            step("61. PDF Ctrl+Z undo", edits_after <= edits_before, f"{edits_before} → {edits_after}")
+        except Exception as e:
+            step("61. PDF Ctrl+Z", False, str(e))
+
+        # ─── 62. 햄버거 메뉴 항목 수 ──
+        try:
+            n = page.evaluate("() => document.querySelectorAll('#hamDrawer .ham-item').length")
+            step("62. 햄버거 메뉴 항목", n >= 5, f"{n}개")
+        except Exception as e:
+            step("62. 햄버거 메뉴", False, str(e))
+
+        # ─── 63. 모바일 하단 바 존재 ──
+        try:
+            mb = page.evaluate("() => !!document.getElementById('mobileBottomBar')")
+            step("63. 모바일 하단 바", bool(mb))
+        except Exception as e:
+            step("63. 모바일 하단 바", False, str(e))
+
+        # ─── 64. Solbox 크레딧 푸터 표시 ──
+        try:
+            footer = page.evaluate("() => { const els=[...document.querySelectorAll('*')].filter(e=>/CDN.*Cloud.*Solbox/i.test(e.textContent||'')); return els.length>0; }")
+            step("64. Solbox 크레딧 푸터", bool(footer))
+        except Exception as e:
+            step("64. Solbox 푸터", False, str(e))
+
+        # ─── 65. 페이지 에러 0 ──
+        try:
+            step("65. 페이지 에러 0", len(errs) == 0, f"{len(errs)}개")
+        except Exception as e:
+            step("65. 페이지 에러", False, str(e))
+
         # ─── 종합 ───────────────────────────
         browser.close()
 

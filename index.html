@@ -786,7 +786,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v20.1<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v20.2<span class="dot"></span></button>
   </div>
   <span class="filename" id="filenameLabel"></span>
   <span id="wordCount" style="margin-left:8px;font-size:11px;color:var(--text-muted);font-weight:500"></span>
@@ -812,7 +812,7 @@
     <button class="btn" id="closeBtn" disabled title="문서 닫기"><span class="ico">✕</span><span class="label">닫기</span></button>
   </div>
 
-  <button class="btn" id="micBtn" disabled title="음성 입력 (한국어)"><span class="ico">🎙️</span><span class="label">음성</span></button>
+  <button class="btn" id="micBtn" hidden disabled title="음성 입력 (한국어)"><span class="ico">🎙️</span><span class="label">음성</span></button>
   <button class="btn" id="ocrBtn" disabled title="OCR (이미지에서 글자 추출)"><span class="ico">📷</span><span class="label">OCR</span></button>
   <button class="btn" id="mergeBtn" disabled title="명단으로 양식 일괄 만들기 (Mail Merge)"><span class="ico">📨</span><span class="label">일괄</span></button>
   <button class="btn" id="searchToggleBtn" disabled title="검색 (Ctrl+F)"><span class="ico">🔍</span><span class="label">찾기</span></button>
@@ -845,7 +845,6 @@
   <div class="ham-list">
     <button class="ham-item" data-act="new-docx"><span class="ico">📝</span>새 워드 (.docx)</button>
     <button class="ham-item" data-act="new-hwpx"><span class="ico">📄</span>새 한글 (.hwpx)</button>
-    <button class="ham-item" data-act="mic"><span class="ico">🎙️</span>음성 입력</button>
     <button class="ham-item" data-act="ocr"><span class="ico">📷</span>OCR (글자 추출)</button>
     <button class="ham-item" data-act="merge"><span class="ico">📨</span>양식 일괄 만들기</button>
     <button class="ham-item" data-act="ver"><span class="ico">ⓘ</span>업데이트 내역</button>
@@ -1980,7 +1979,6 @@ async function mountDocx(file) {
       <button class="tool" id="docxItalic" style="border:1px solid var(--border);background:var(--surface);padding:6px 10px;border-radius:8px;font-size:12px;cursor:pointer;font-style:italic"><i>I</i></button>
       <button class="tool" id="docxUnderline" style="border:1px solid var(--border);background:var(--surface);padding:6px 10px;border-radius:8px;font-size:12px;cursor:pointer;text-decoration:underline">U</button>
       <label style="font-size:11.5px;color:var(--text-soft);font-weight:500;display:flex;align-items:center;gap:5px;">색 <input type="color" id="docxColor" value="#000000" style="width:28px;height:28px;border-radius:7px;border:1px solid var(--border);cursor:pointer;padding:1px;background:var(--surface)"></label>
-      <span style="color:var(--text-muted);font-size:11px;margin-left:auto;">선택해서 적용 · 시각용 (저장된 .docx 에는 텍스트만 반영)</span>
     `;
     docxHost.appendChild(docxToolbar);
 
@@ -2761,6 +2759,7 @@ setMode = function(m) {
 
 // === 업데이트 내역 (소식) ===
 const UPDATE_HISTORY = [
+  { version: "v20.2", date: "2026-05-02", desc: "🎙️ 우하단 음성 FAB 하나로 통일 — 헤더·햄버거 음성 버튼 제거, 모드 무관 항상 표시, 편집 곳 없으면 자동으로 첫 문단 잡기 · 📝 새 .docx A4 정상 폭 + 빈 단락 3줄로 시작 · 한글 새 문서 [새 문서] 클릭하면 바로 편집 가능 (다운로드+팝업 제거) · 워드 툴바 안내문 제거" },
   { version: "v19", date: "2026-05-02", desc: "📝 워드 글씨체 변경 도구 + 무료 한글 글꼴 30+ 등록 (Google Fonts) · 📷 OCR → 워드(.docx) 자동 변환 (페이지 이미지 + 추출 글자, 표·그림 보존) · 🖱 PDF 편집 글씨/지우개 마우스로 위치 이동 · 🪟 PDF 인쇄 후 새 탭 자동 닫기" },
   { version: "v18", date: "2026-05-02", desc: "🎙️ 음성 우하단 FAB(펄스 빨강) + 실시간 인식(interim) + 미리보기 말풍선 · 📱 모바일 화면 자동 맞춤 (작은 폰 자동축소, 태블릿 좌우 스크롤) · PDF 썸네일 자동 숨김" },
   { version: "v17", date: "2026-05-02", desc: "🍎 맥·아이폰(Safari) 텍스트 입력 안정화 — 16px 자동확대 방지 · -webkit-user-select 보장 · contenteditable iOS 호환 · 자동대문자/자동수정 활성" },
@@ -2880,8 +2879,17 @@ newMenu.querySelectorAll('.newm-item').forEach(b => {
         const docxLib = await import("https://cdn.jsdelivr.net/npm/docx@9.6.1/+esm");
         const doc = new docxLib.Document({
           sections: [{
-            properties: {},
-            children: [new docxLib.Paragraph({ children: [new docxLib.TextRun("새 문서")] })],
+            properties: {
+              page: {
+                size: { width: 11906, height: 16838, orientation: 'portrait' }, // A4 (twips)
+                margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 },    // 1인치
+              },
+            },
+            children: [
+              new docxLib.Paragraph({ children: [new docxLib.TextRun("")] }),
+              new docxLib.Paragraph({ children: [new docxLib.TextRun("")] }),
+              new docxLib.Paragraph({ children: [new docxLib.TextRun("")] }),
+            ],
           }],
         });
         const blob = await docxLib.Packer.toBlob(doc);
@@ -2910,17 +2918,11 @@ newMenu.querySelectorAll('.newm-item').forEach(b => {
           bytes = await m2h("여기를 클릭해서 내용을 입력하세요.");
         }
 
-        // 캐시에서 온 경우만 마운트 (caret 100% 보장). 그 외는 다운로드만.
-        if (fromCache && editor && editorReady) {
-          const blob = new Blob([bytes], { type: "application/hwp+zip" });
-          const file = new File([blob], "새문서.hwpx", { type: "application/hwp+zip" });
-          hideLoading();
-          await mountHwp(file);
-        } else {
-          hideLoading();
-          downloadBytes(bytes, "새문서.hwpx", "application/hwp+zip");
-          alert("빈 .hwpx 다운로드되었어요. \n\n팁: 한 번 일반 .hwp/.hwpx 파일을 열면 그게 자동으로 빈 문서 템플릿으로 저장돼서 다음부터는 [새 문서] 클릭만으로 바로 편집 가능합니다.");
-        }
+        // 항상 마운트 — 사용자가 [새 문서] 누르면 바로 편집 가능해야 함
+        const blob = new Blob([bytes], { type: "application/hwp+zip" });
+        const file = new File([blob], "새문서.hwpx", { type: "application/hwp+zip" });
+        hideLoading();
+        await mountHwp(file);
       }
     } catch (err) {
       hideLoading();
@@ -3192,11 +3194,33 @@ micBtn.addEventListener('click', () => {
   }
   if (recognizing) { recognition.stop(); return; }
 
-  // target 결정 (active → savedTarget)
+  // target 결정 (active → savedTarget → 자동 첫 편집가능 요소)
   let target = document.activeElement;
   if (!isEditable(target) || isExcluded(target)) target = _lastEditTarget;
   if (!isEditable(target) || isExcluded(target)) {
-    alert("음성 입력하려면 편집할 곳(문단·셀)을 먼저 클릭해주세요");
+    // 자동: 현재 모드에 맞는 첫 편집 가능 요소 잡기
+    const auto = document.querySelector(
+      '#docxHost .docx p[contenteditable], #docxHost .docx td[contenteditable], ' +
+      '.hwpx-edit-overlay [contenteditable], textarea:not([disabled]), ' +
+      'input[type="text"]:not([disabled])'
+    );
+    if (auto) {
+      auto.focus();
+      try {
+        if (auto.isContentEditable) {
+          const sel = window.getSelection();
+          const r = document.createRange();
+          r.selectNodeContents(auto); r.collapse(false);
+          sel.removeAllRanges(); sel.addRange(r);
+          _savedRange = r.cloneRange();
+        }
+      } catch(_) {}
+      target = auto;
+      _lastEditTarget = auto;
+    }
+  }
+  if (!isEditable(target) || isExcluded(target)) {
+    alert("편집할 문서를 먼저 열어주세요 (📁 파일 열기 또는 새 문서)");
     return;
   }
 
@@ -3349,9 +3373,9 @@ voiceFab.addEventListener('click', () => {
   // 동일 로직 재사용
   micBtn.click();
 });
-// 모드 있을 때만 FAB 표시
+// FAB 항상 표시 (PC·모바일 공통, 모드 무관)
 function syncVoiceFabVisibility() {
-  voiceFab.classList.toggle('visible', !!currentMode);
+  voiceFab.classList.add('visible');
 }
 const _origSetModeFab = setMode;
 setMode = function(m) {
