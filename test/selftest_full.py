@@ -828,6 +828,92 @@ def main():
         except Exception as e:
             step("65. 페이지 에러", False, str(e))
 
+        # ─── 66. 음성 실시간 (interim → final) 본문 반영 — mock SpeechRec 으로 정밀 검증 ──
+        try:
+            _safe_close(page)
+            page.click("#newBtn"); page.wait_for_timeout(150)
+            page.click('#newMenu .newm-item[data-fmt="docx"]')
+            page.wait_for_function("() => document.querySelectorAll('#docxHost .docx p[contenteditable]').length > 0", timeout=20000)
+            r = page.evaluate("""async () => {
+              // mock SpeechRecognition
+              class Mock {
+                constructor(){ this.lang=''; this.interimResults=true; this.continuous=true; }
+                start(){ if(this.onstart) this.onstart(); }
+                stop(){ if(this.onend) this.onend(); }
+              }
+              window.SpeechRecognition = Mock;
+              window.webkitSpeechRecognition = Mock;
+              // 첫 문단 caret
+              const p = document.querySelector('#docxHost .docx p[contenteditable]');
+              p.focus();
+              const sel = window.getSelection();
+              const r0 = document.createRange(); r0.selectNodeContents(p); r0.collapse(false);
+              sel.removeAllRanges(); sel.addRange(r0);
+              // FAB 클릭 → micBtn → recognition 시작
+              document.getElementById('voiceFab').click();
+              await new Promise(r=>setTimeout(r,300));
+              // mock 으로 interim 발사
+              if (!window.__voiceMockResult) return { ok:false, reason:'mock 핸들러 없음 (인식 시작 안 됨일 수 있음)' };
+              window.__voiceMockResult('실시간', null);
+              await new Promise(r=>setTimeout(r,150));
+              const hasInterim = !!document.querySelector('.voice-interim-inline');
+              const interimText = hasInterim ? document.querySelector('.voice-interim-inline').textContent : '';
+              // final 도착 → interim 제거 + 정식 텍스트
+              window.__voiceMockResult(null, '실시간음성');
+              await new Promise(r=>setTimeout(r,200));
+              const stillHasInterim = !!document.querySelector('.voice-interim-inline');
+              const final = p.textContent;
+              return { ok: hasInterim && interimText==='실시간' && !stillHasInterim && final.includes('실시간음성'),
+                       hasInterim, interimText, stillHasInterim, final };
+            }""")
+            step("66. 음성 실시간 interim→final 정밀", r.get('ok'), f"interim={r.get('interimText')!r} → 본문={r.get('final')!r}")
+        except Exception as e:
+            step("66. 음성 실시간", False, str(e))
+
+        # ─── 67. 새 docx 페이지 폭(≥700px on 1280+ viewport) ──
+        try:
+            _safe_close(page)
+            page.click("#newBtn"); page.wait_for_timeout(150)
+            page.click('#newMenu .newm-item[data-fmt="docx"]')
+            page.wait_for_function("() => document.querySelectorAll('#docxHost .docx p[contenteditable]').length > 0", timeout=20000)
+            w = page.evaluate("() => { const s=document.querySelector('#docxHost section'); return s ? s.getBoundingClientRect().width : 0; }")
+            step("67. 새 docx 페이지 폭", w >= 700, f"{int(w)}px (PC 시각적 zoom 포함)")
+        except Exception as e:
+            step("67. 새 docx 페이지 폭", False, str(e))
+
+        # ─── 68. 📌 바로가기 버튼 라벨 + 동작 ──
+        try:
+            label = page.evaluate("() => document.getElementById('installBtn').textContent")
+            tooltip = page.evaluate("() => document.getElementById('installBtn').title")
+            ok = ('바탕화면' in label or '홈 화면' in label) and ('바로가기' in tooltip or '추가' in tooltip)
+            step("68. 📌 바로가기 라벨", ok, f"label={label!r}")
+        except Exception as e:
+            step("68. 📌 바로가기", False, str(e))
+
+        # ─── 69. PWA manifest + service worker 등록 ──
+        try:
+            mf = page.evaluate("() => document.querySelector('link[rel=manifest]') ? document.querySelector('link[rel=manifest]').href : null")
+            sw = page.evaluate("async () => { const r = await navigator.serviceWorker.getRegistration(); return r ? !!r.active || !!r.installing || !!r.waiting : false; }")
+            step("69. PWA manifest+SW", bool(mf) and sw, f"manifest={mf!r}, sw={sw}")
+        except Exception as e:
+            step("69. PWA", False, str(e))
+
+        # ─── 70. 새 docx 워드 폰트 옵션 + 굵게 동작 ──
+        try:
+            r = page.evaluate("""() => {
+              const p = document.querySelector('#docxHost .docx p[contenteditable]');
+              p.focus();
+              const sel = window.getSelection();
+              const range = document.createRange(); range.selectNodeContents(p);
+              sel.removeAllRanges(); sel.addRange(range);
+              document.getElementById('docxBold').click();
+              const html = p.innerHTML;
+              return { ok: /<b>|<strong>|font-weight:\s*(bold|7\\d\\d)/i.test(html) || /style="[^"]*font-weight/.test(html), html: html.slice(0,150) };
+            }""")
+            step("70. 워드 굵게 적용", r.get('ok'), r.get('html',''))
+        except Exception as e:
+            step("70. 워드 굵게", False, str(e))
+
         # ─── 종합 ───────────────────────────
         browser.close()
 

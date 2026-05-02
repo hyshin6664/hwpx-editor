@@ -653,6 +653,16 @@
     /* 작은 폰: scale 적용 (JS 가 동적 계산), 좌우 스크롤 X */
     #docxHost { overflow-x: hidden !important; }
   }
+  /* PC 큰 화면 — A4 페이지를 시각적으로 충분히 크게 (모바일은 위 미디어 쿼리가 처리) */
+  @media (min-width: 1100px) {
+    #docxHost .docx { zoom: 1.25; }
+  }
+  @media (min-width: 1400px) {
+    #docxHost .docx { zoom: 1.4; }
+  }
+  @media (min-width: 1700px) {
+    #docxHost .docx { zoom: 1.55; }
+  }
 
   /* 모바일 — 폰트 16px 이상 강제 (iOS 자동 줌 방지) */
   @media (max-width: 720px) {
@@ -812,7 +822,7 @@
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
     <button class="ver-btn" id="verBtn" title="업데이트 내역">v20.4<span class="dot"></span></button>
-    <button class="install-btn" id="installBtn" title="바탕화면(PC) / 홈 화면(모바일)에 바로가기 추가" hidden>📌 바로가기</button>
+    <button class="install-btn" id="installBtn" title="이 편집기를 PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가합니다 — 다음부터 한 번에 열기" hidden>📌 바탕화면에 추가</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
   <span id="wordCount" style="margin-left:8px;font-size:11px;color:var(--text-muted);font-weight:500"></span>
@@ -2851,6 +2861,10 @@ setMode = function(m) {
   // 이미 설치된 상태면 버튼 숨김 유지
   if (isStandalone) { installBtn.hidden = true; return; }
 
+  // 라벨을 기기에 맞게 — 모바일은 "홈 화면에 추가", PC는 "바탕화면에 추가"
+  const isMobileLike = isIOS || /Android|Mobi/.test(ua) || window.innerWidth <= 720;
+  installBtn.textContent = isMobileLike ? '📌 홈 화면에 추가' : '📌 바탕화면에 추가';
+
   // Chrome / Edge / Android — beforeinstallprompt
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
@@ -3415,8 +3429,16 @@ micBtn.addEventListener('click', () => {
   };
   // 종료 시 interim 정리
   const _origOnEnd = recognition.onend;
-  // 사용 안 되면 패스
+  // 음성 핸들러 노출 — 자체 테스트가 직접 호출 가능
   window.__voiceClearInterim = clearInterim;
+  window.__voicePlaceInterim = placeInterim;
+  // mock onresult 트리거 (자체 테스트용)
+  window.__voiceMockResult = (interim, final) => {
+    const results = [];
+    if (interim) results.push(Object.assign([{ transcript: interim }], { isFinal: false }));
+    if (final)   results.push(Object.assign([{ transcript: final }],   { isFinal: true }));
+    recognition.onresult({ resultIndex: 0, results });
+  };
   recognition.onstart = () => {
     recognizing = true;
     micBtn.style.background = 'var(--accent-rose)'; micBtn.style.color = '#fff';
