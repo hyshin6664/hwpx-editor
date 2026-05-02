@@ -821,7 +821,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v20.4<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v20.5<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="이 편집기를 PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가합니다 — 다음부터 한 번에 열기" hidden>📌 바탕화면에 추가</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -2929,6 +2929,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v20.5", date: "2026-05-02", desc: "🖥 PC에서 워드 페이지 시각적으로 충분히 크게 (1100px+ → 1.25배, 1400px+ → 1.4배, 1700px+ → 1.55배 zoom) — 모바일은 기존 fitDocxToViewport 그대로 · 📌 바로가기 버튼 기기에 따라 자동 라벨 (PC '바탕화면에 추가' / 모바일 '홈 화면에 추가') + 더 친절한 툴팁" },
   { version: "v20.4", date: "2026-05-02", desc: "📌 바로가기 만들기 버튼 추가 — PC 바탕화면 / Mac Dock / 모바일 홈 화면에 한 번에 설치 (PWA, 서비스 워커, manifest) · iOS Safari·macOS Safari 안내 모달 자동 분기" },
   { version: "v20.3", date: "2026-05-02", desc: "📝 새 문서(.docx·.hwpx) 클릭하면 바로 편집 가능 — 한글 새 문서도 워드 편집기로 캐럿 100% 동작, [💾 .hwpx] 버튼으로 저장 시 자동 변환 · 🤐 HWPX 비표준 감지 다이얼로그 사용자에게 안 보이게 — 파일 열 때 사전 자동 보정 (line_height=0 등 정리)" },
   { version: "v20.2", date: "2026-05-02", desc: "🎙️ 우하단 음성 FAB 하나로 통일 — 헤더·햄버거 음성 버튼 제거, 모드 무관 항상 표시, 편집 곳 없으면 자동으로 첫 문단 잡기 · 📝 새 .docx A4 정상 폭 + 빈 단락 3줄로 시작 · 한글 새 문서 [새 문서] 클릭하면 바로 편집 가능 (다운로드+팝업 제거) · 워드 툴바 안내문 제거" },
