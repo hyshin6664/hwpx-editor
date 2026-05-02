@@ -858,7 +858,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v21.7<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v21.8<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -3460,6 +3460,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v21.8", date: "2026-05-03", desc: "🎯 PDF → 워드 변환 고충실도 — getOperatorList 분석으로 표 테두리(constructPath/stroke) + 셀 배경색(fill) + 텍스트 색(setFillRGBColor) 자동 추출. DOCX 셀 shading + 텍스트 color 직접 적용. 검증: 예약이체 PDF 의 회색 헤더(#DEDEDE) 셀 배경이 워드에서도 회색으로 정확히 재현됨. 색상 정규화 (0-1/0-255/0-65535 모두 처리). · 📷 OCR 버튼 햄버거에서 PDF 툴바로 이동 (PDF 모드 전용)" },
   { version: "v21.7", date: "2026-05-03", desc: "✂️ 글자만 지우기 — 사용자가 [✏️ 글씨] 도구로 직접 입력한 색깔 텍스트(빨강/파랑/초록 등)도 함께 지워짐. 원본 PDF textBoxes(pdfjs.getTextContent) + 사용자 text edits(pg.edits.filter(type='text')) 둘 다 intersection 검사. row-by-row 배경 클론은 색깔과 무관하게 항상 동작 (주변 배경색만 보고 단색 복제)" },
   { version: "v21.6", date: "2026-05-02", desc: "✂️ PDF 글자만 지우기 — 150개 실제 PDF textBox 검증 100% 완벽 (사람 눈 분간 불가). 알고리즘 전면 교체: row-by-row 배경 클론 (각 y행마다 bbox 좌우 픽셀에서 MODE 색 결정 → 단순 복사로 한 줄 채움). 외곽선 뭉개기 안 함. 동적 PAD(글자높이의 25%) 로 가는 글자(`)`, `.`, `,`)도 흔적 0. 표 테두리·검은 선 같은 outlier 는 MODE 가 자동 무시." },
   { version: "v21.5", date: "2026-05-02", desc: "✂️ 글자만 지우기 — 점선 흔적 완전 제거. bbox 1px 패딩(antialiased halo 포함) + 임계값 6 으로 매우 민감하게(diff>=6 픽셀 모두 단색 MODE 로 대체, alpha blend 안 함). 시각 검증: 표 헤더·본문 어디서든 maxDiff=0 (배경과 100% 일치, 0개 점)" },

@@ -805,7 +805,7 @@ def main():
         # ─── 62. 햄버거 메뉴 항목 수 ──
         try:
             n = page.evaluate("() => document.querySelectorAll('#hamDrawer .ham-item').length")
-            step("62. 햄버거 메뉴 항목", n >= 4, f"{n}개")
+            step("62. 햄버거 메뉴 항목", n >= 3, f"{n}개")
         except Exception as e:
             step("62. 햄버거 메뉴", False, str(e))
 
