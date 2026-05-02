@@ -8,7 +8,8 @@
 <meta name="theme-color" content="#c7b8ee">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Solbox Docs">
-<link rel="apple-touch-icon" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' rx='32' fill='%23c7b8ee'/><text x='50%25' y='54%25' font-size='110' text-anchor='middle' dominant-baseline='middle' font-family='Apple Color Emoji,Segoe UI Emoji,sans-serif'>📄</text></svg>">
+<link rel="apple-touch-icon" href="./icon-192.svg">
+<link rel="icon" type="image/svg+xml" href="./icon-192.svg">
 <meta name="description" content=".hwp · .hwpx 한글 문서를 브라우저에서 100% 똑같이 보면서 편집하고 다시 받는 무료 편집기. 서버 업로드 없음.">
 <style>
   /* === 파스텔 톤 컬러 팔레트 (귀염샤방) === */
@@ -813,7 +814,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v20.7<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v20.8<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="이 편집기를 PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가합니다 — 다음부터 한 번에 열기" hidden>📌 바탕화면에 추가</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -2963,6 +2964,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v20.8", date: "2026-05-02", desc: "📌 안드로이드 한 번 클릭 설치 가능하게 수정 — manifest 의 data: URL 아이콘 → 실 SVG 파일(icon-192.svg, icon-512.svg)로 교체. Chrome 의 PWA 설치 자격 충족 → beforeinstallprompt 이벤트 정상 발화. iOS 는 Apple 이 API 자체를 차단해서 안내 모달이 한계." },
   { version: "v20.7", date: "2026-05-02", desc: "📐 워드/한글 새 문서 페이지 폭 표준 A4 (794px) 강제 — docx-preview 가 폭 누락하는 문제 보정 (CSS zoom 부작용 제거, transform 기반 모바일 자동 축소) · 📱 fitDocxToViewport 로 ≤720px 자동 fit (≤480 → 720 까지 모바일 처리 확장) · 📌 바로가기 버튼 모든 기기 항상 표시 (안드로이드 안내 모달 추가, prompt 미충족 사용자도 수동 설치 가능)" },
   { version: "v20.6", date: "2026-05-02", desc: "🔄 서비스 워커 network-first(HTML) — 사용자 재방문 시 항상 최신 버전 받음 (이전 버전은 SW 가 옛 index.html 캐시해서 새 배포가 안 보였던 버그 수정) · SW 업데이트 자동 감지 + 1회 새로고침 · 재방문 시나리오 자체 테스트(#70-pre) 영구 등록" },
   { version: "v20.5", date: "2026-05-02", desc: "🖥 PC에서 워드 페이지 시각적으로 충분히 크게 (1100px+ → 1.25배, 1400px+ → 1.4배, 1700px+ → 1.55배 zoom) — 모바일은 기존 fitDocxToViewport 그대로 · 📌 바로가기 버튼 기기에 따라 자동 라벨 (PC '바탕화면에 추가' / 모바일 '홈 화면에 추가') + 더 친절한 툴팁" },
