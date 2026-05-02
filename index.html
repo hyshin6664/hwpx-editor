@@ -1747,10 +1747,8 @@ async function mountPdf(file) {
             // args: [x, y, w, h] in PDF user space
             const [px, py, pw, ph] = args;
             const m = getCTM();
-            // 4 corner transform
             const c1 = applyTransform(m, px, py);
             const c2 = applyTransform(m, px + pw, py + ph);
-            // viewport 변환: PDF coord → canvas coord
             const vT = viewport.transform;
             const v1 = applyTransform(vT, c1[0], c1[1]);
             const v2 = applyTransform(vT, c2[0], c2[1]);
@@ -1759,6 +1757,24 @@ async function mountPdf(file) {
             const cw = Math.abs(v2[0] - v1[0]);
             const ch = Math.abs(v2[1] - v1[1]);
             pendingRects.push({ x: cx0, y: cy0, w: cw, h: ch });
+          } else if (fn === ops.constructPath) {
+            // args: [subOps[], subArgs(flat), minMax[minX, minY, maxX, maxY]]
+            // minMax 가 path 의 user-space bounding box → 그대로 활용
+            const minMax = args[2];
+            if (minMax && minMax.length === 4) {
+              const [minX, minY, maxX, maxY] = minMax;
+              const m = getCTM();
+              const c1 = applyTransform(m, minX, minY);
+              const c2 = applyTransform(m, maxX, maxY);
+              const vT = viewport.transform;
+              const v1 = applyTransform(vT, c1[0], c1[1]);
+              const v2 = applyTransform(vT, c2[0], c2[1]);
+              const cx0 = Math.min(v1[0], v2[0]);
+              const cy0 = Math.min(v1[1], v2[1]);
+              const cw = Math.abs(v2[0] - v1[0]);
+              const ch = Math.abs(v2[1] - v1[1]);
+              pendingRects.push({ x: cx0, y: cy0, w: cw, h: ch });
+            }
           } else if (fn === ops.fill || fn === ops.eoFill) {
             // 채우기 — fillRects 에 (셀 배경)
             for (const r of pendingRects) {
