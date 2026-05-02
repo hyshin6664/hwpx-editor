@@ -786,7 +786,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v19.1<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v20<span class="dot"></span></button>
   </div>
   <span class="filename" id="filenameLabel"></span>
   <span id="wordCount" style="margin-left:8px;font-size:11px;color:var(--text-muted);font-weight:500"></span>
@@ -1292,6 +1292,18 @@ function clearAllHostsAndState() {
   } catch (_e) {}
 }
 
+// 사용자가 정상 마운트한 .hwpx 를 빈 문서 템플릿으로 IndexedDB 에 캐시
+async function cacheHwpxAsTemplate(buffer, filename) {
+  try {
+    const db = await getDb();
+    const u8 = new Uint8Array(buffer);
+    // 너무 큰 파일은 캐시 안 함 (5MB 이내만)
+    if (u8.byteLength > 5 * 1024 * 1024) return;
+    await db.put('autosave', { bytes: u8, filename, ts: Date.now() }, 'hwpx_template');
+    log("info", `hwpx 템플릿 캐시: ${filename} (${u8.byteLength} bytes)`);
+  } catch (e) { log("warn", "템플릿 캐시 실패: " + e.message); }
+}
+
 // HWP/HWPX 모드 (rhwp 엔진)
 async function mountHwp(file) {
   if (!editor || !editorReady) {
@@ -1315,6 +1327,10 @@ async function mountHwp(file) {
     savePdfBtn.disabled = false;
     hideWelcome();
     hideLoading();
+    // 정상 마운트된 .hwpx 를 빈 문서 템플릿으로 캐시 (다음 새 문서에 재사용)
+    if (file.name.toLowerCase().endsWith('.hwpx') && !file.name.startsWith('새문서')) {
+      cacheHwpxAsTemplate(buffer, file.name).catch(()=>{});
+    }
   } catch (err) {
     hideLoading();
     log("error", "파일 열기 실패: " + (err && err.message ? err.message : err));
@@ -2873,13 +2889,44 @@ newMenu.querySelectorAll('.newm-item').forEach(b => {
         hideLoading();
         await mountDocx(file);
       } else if (fmt === 'hwpx') {
-        const hwpxjs = await loadHwpxjs();
-        const m2h = hwpxjs.markdownToHwpx || (hwpxjs.default && hwpxjs.default.markdownToHwpx);
-        if (typeof m2h !== 'function') throw new Error("hwpxjs markdownToHwpx 없음");
-        // 본문 1줄 placeholder — lineseg 정상 + 사용자가 클릭해 캐럿 잡기 쉬움
-        const md = "여기를 클릭해서 내용을 입력하세요.";
-        const bytes = await m2h(md);
-        // rhwp 부팅 됐으면 즉시 마운트, 안 됐으면 다운로드
+        // 우선순위:
+        //  1. 사용자가 한 번 정상으로 마운트한 .hwpx 가 IndexedDB 에 캐시되어 있으면 그걸 템플릿으로 사용 (caret 100% 활성 보장)
+        //  2. rhwp 부팅 직후 빈 hwp 추출 → hwpxjs 로 변환 (정상 동작)
+        //  3. markdownToHwpx (마지막 폴백)
+        let bytes = null;
+        try {
+          const db = await getDb();
+          const cached = await db.get('autosave', 'hwpx_template');
+          if (cached && cached.bytes) {
+            bytes = new Uint8Array(cached.bytes);
+            log("info", `한글 빈 문서: 캐시된 템플릿 사용 (${bytes.byteLength} bytes)`);
+          }
+        } catch (_e) {}
+
+        if (!bytes && editor && editorReady) {
+          // rhwp 에서 빈 hwp 추출 (부팅 직후 = 빈 상태) → hwpx 변환
+          try {
+            const hwpBytes = await editor.exportHwp();
+            if (hwpBytes && hwpBytes.length > 100) {
+              const hwpxjs = await loadHwpxjs();
+              const h2x = hwpxjs.hwpToHwpx || (hwpxjs.default && hwpxjs.default.hwpToHwpx);
+              if (typeof h2x === 'function') {
+                bytes = await h2x(new Uint8Array(hwpBytes), { creator: 'hwpx-editor' });
+                log("info", `한글 빈 문서: rhwp 추출 → hwpxjs 변환 (${bytes.byteLength} bytes)`);
+              }
+            }
+          } catch (e) { log("warn", "rhwp 추출 실패: " + e.message); }
+        }
+
+        if (!bytes) {
+          // 마지막 폴백 — markdownToHwpx
+          const hwpxjs = await loadHwpxjs();
+          const m2h = hwpxjs.markdownToHwpx || (hwpxjs.default && hwpxjs.default.markdownToHwpx);
+          if (typeof m2h !== 'function') throw new Error("hwpxjs markdownToHwpx 없음");
+          bytes = await m2h("여기를 클릭해서 내용을 입력하세요.");
+          log("warn", "한글 빈 문서: markdownToHwpx 폴백 (caret 활성 안 될 수 있음)");
+        }
+
         if (editor && editorReady) {
           const blob = new Blob([bytes], { type: "application/hwp+zip" });
           const file = new File([blob], "새문서.hwpx", { type: "application/hwp+zip" });
@@ -3169,8 +3216,42 @@ micBtn.addEventListener('click', () => {
     return;
   }
 
-  // 핸들러 — 실시간 (interim) + 최종 (final)
+  // 핸들러 — 진짜 실시간: interim 도 본문에 즉시 삽입(회색/이탤릭) + final 들어오면 정식 텍스트로 교체
   let bubbleTimer = null;
+  let interimSpan = null; // 현재 본문에 떠있는 interim 텍스트 노드 (span)
+  function clearInterim() {
+    if (interimSpan && interimSpan.parentNode) {
+      interimSpan.parentNode.removeChild(interimSpan);
+    }
+    interimSpan = null;
+  }
+  function placeInterim(text) {
+    clearInterim();
+    if (!text) return;
+    if (!target || !document.body.contains(target)) return;
+    // contenteditable 만 지원 (INPUT/TEXTAREA 는 final 만 처리)
+    if (!target.isContentEditable) return;
+    const span = document.createElement('span');
+    span.className = 'voice-interim-inline';
+    span.style.cssText = 'color:#9ca0b0;font-style:italic;background:rgba(124,141,181,0.07);';
+    span.textContent = text;
+    span.contentEditable = 'false'; // 사용자가 직접 수정 못 하게 (final로 교체될 거니까)
+    // 캐럿 위치에 삽입
+    let range;
+    if (_savedRange && target.contains(_savedRange.commonAncestorContainer)) {
+      range = _savedRange.cloneRange();
+    } else {
+      range = document.createRange();
+      range.selectNodeContents(target);
+      range.collapse(false);
+    }
+    range.insertNode(span);
+    // 캐럿을 span 뒤로
+    range.setStartAfter(span);
+    range.setEndAfter(span);
+    range.collapse(true);
+    interimSpan = span;
+  }
   recognition.onresult = (e) => {
     let final = '';
     let interim = '';
@@ -3181,14 +3262,21 @@ micBtn.addEventListener('click', () => {
     }
     // 미리보기 말풍선
     if (interim || final) showVoiceBubble(final, interim);
-    // 최종이 들어오면 즉시 본문에 삽입
+    // final 들어오면: interim span 제거 + 정식 텍스트 삽입
     if (final) {
+      clearInterim();
       insertTextRobust(target, final);
+    } else if (interim) {
+      // interim 만 있으면 본문에 회색/이탤릭으로 임시 표시 (실시간 즉각 피드백)
+      placeInterim(interim);
     }
-    // 활동 후 4초 동안 더 발화 없으면 미리보기 자동 숨김
     clearTimeout(bubbleTimer);
     bubbleTimer = setTimeout(hideVoiceBubble, 4000);
   };
+  // 종료 시 interim 정리
+  const _origOnEnd = recognition.onend;
+  // 사용 안 되면 패스
+  window.__voiceClearInterim = clearInterim;
   recognition.onstart = () => {
     recognizing = true;
     micBtn.style.background = 'var(--accent-rose)'; micBtn.style.color = '#fff';
@@ -3202,6 +3290,8 @@ micBtn.addEventListener('click', () => {
     micBtn.style.background = ''; micBtn.style.color = '';
     micBtn.title = '음성 입력 (한국어)';
     voiceFab.classList.remove('recording');
+    // interim 으로 본문에 떠있던 회색 텍스트 정리 (final 안 와서 남았다면)
+    clearInterim();
     setTimeout(hideVoiceBubble, 800);
     log("info", "음성 입력 종료");
   };
