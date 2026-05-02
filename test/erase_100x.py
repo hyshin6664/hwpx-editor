@@ -8,7 +8,7 @@ from playwright.sync_api import sync_playwright
 try: sys.stdout.reconfigure(encoding="utf-8")
 except: pass
 
-URL = "http://127.0.0.1:8765/?cb=" + str(int(time.time()*1000))
+URL = "https://hyshin6664.github.io/hwpx-editor/?cb=" + str(int(time.time()*1000))
 PDF = Path(r"C:\Users\신현식\Desktop\예약이체 내역.pdf")
 OUT = Path(__file__).parent / "out_erase_100x"; OUT.mkdir(exist_ok=True)
 
