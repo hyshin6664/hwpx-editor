@@ -3,7 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>한글 간단 편집기</title>
+<title>Solbox Docs · 문서 편집기</title>
+<link rel="manifest" href="./manifest.json">
+<meta name="theme-color" content="#c7b8ee">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Solbox Docs">
+<link rel="apple-touch-icon" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' rx='32' fill='%23c7b8ee'/><text x='50%25' y='54%25' font-size='110' text-anchor='middle' dominant-baseline='middle' font-family='Apple Color Emoji,Segoe UI Emoji,sans-serif'>📄</text></svg>">
 <meta name="description" content=".hwp · .hwpx 한글 문서를 브라우저에서 100% 똑같이 보면서 편집하고 다시 받는 무료 편집기. 서버 업로드 없음.">
 <style>
   /* === 파스텔 톤 컬러 팔레트 (귀염샤방) === */
@@ -88,6 +93,26 @@
     display: none;
   }
   .ver-btn.has-new .dot { display: block; }
+  /* 📌 바로가기 (PWA install) 버튼 — 강조색 */
+  .install-btn {
+    background: linear-gradient(135deg, var(--primary), var(--accent-mint));
+    border: 0; border-radius: 999px;
+    padding: 6px 14px; margin-left: 8px;
+    font-size: 12px; font-weight: 700; color: #fff;
+    cursor: pointer; box-shadow: 0 2px 8px rgba(124,141,181,0.25);
+    transition: transform .12s, box-shadow .12s;
+    animation: install-pulse 2.4s ease-in-out infinite;
+  }
+  .install-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(124,141,181,0.35); }
+  .install-btn:active { transform: translateY(0); }
+  @keyframes install-pulse {
+    0%, 100% { box-shadow: 0 2px 8px rgba(124,141,181,0.25); }
+    50% { box-shadow: 0 2px 14px rgba(199,184,238,0.55); }
+  }
+  /* 모바일에서 더 작게 */
+  @media (max-width: 720px) {
+    .install-btn { padding: 5px 10px; font-size: 11px; margin-left: 4px; }
+  }
 
   /* 소식 모달 */
   .news-overlay {
@@ -786,7 +811,8 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v20.3<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v20.4<span class="dot"></span></button>
+    <button class="install-btn" id="installBtn" title="바탕화면(PC) / 홈 화면(모바일)에 바로가기 추가" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
   <span id="wordCount" style="margin-left:8px;font-size:11px;color:var(--text-muted);font-weight:500"></span>
@@ -2806,7 +2832,90 @@ setMode = function(m) {
 };
 
 // === 업데이트 내역 (소식) ===
+// =============================================================
+// PWA — 바탕화면(PC) / 홈 화면(모바일) 바로가기 설치 버튼
+// =============================================================
+(function setupInstall() {
+  // Service Worker 등록 (실패해도 무시)
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js').catch(()=>{});
+  }
+  const installBtn = document.getElementById('installBtn');
+  if (!installBtn) return;
+  let deferred = null;
+  const ua = navigator.userAgent || '';
+  const isIOS = /iPad|iPhone|iPod/.test(ua) && !window.MSStream;
+  const isStandalone = window.matchMedia && window.matchMedia('(display-mode: standalone)').matches
+                       || window.navigator.standalone === true;
+
+  // 이미 설치된 상태면 버튼 숨김 유지
+  if (isStandalone) { installBtn.hidden = true; return; }
+
+  // Chrome / Edge / Android — beforeinstallprompt
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferred = e;
+    installBtn.hidden = false;
+  });
+  window.addEventListener('appinstalled', () => {
+    installBtn.hidden = true;
+    deferred = null;
+  });
+
+  // iOS Safari — beforeinstallprompt 미지원. 그래도 버튼 보이고, 클릭 시 안내 모달.
+  if (isIOS) installBtn.hidden = false;
+  // Safari macOS — 버튼 보이고, 안내 모달
+  const isSafari = /Safari\//.test(ua) && !/Chrome|Chromium|Edg\//.test(ua);
+  if (isSafari && !isIOS) installBtn.hidden = false;
+
+  installBtn.addEventListener('click', async () => {
+    if (deferred) {
+      try {
+        deferred.prompt();
+        const choice = await deferred.userChoice;
+        if (choice && choice.outcome === 'accepted') installBtn.hidden = true;
+      } catch (e) {}
+      deferred = null;
+      return;
+    }
+    // 안내 모달 (iOS Safari, macOS Safari, 또는 prompt 미지원)
+    showInstallGuide(isIOS);
+  });
+
+  function showInstallGuide(ios) {
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;';
+    wrap.innerHTML = `
+      <div style="background:#fff;border-radius:18px;max-width:440px;width:100%;padding:24px;box-shadow:0 12px 40px rgba(0,0,0,.25);font-family:inherit;">
+        <h3 style="margin:0 0 12px;font-size:18px;font-weight:700;color:#3b3654;">📌 바로가기 만들기</h3>
+        ${ios ? `
+          <p style="margin:0 0 12px;font-size:14px;color:#5b5876;line-height:1.6;">
+            <b>아이폰·아이패드 (Safari)</b><br>
+            ① 화면 아래 <b>공유 버튼</b> <span style="font-size:18px;">⬆️</span> 누르기<br>
+            ② <b>"홈 화면에 추가"</b> 선택<br>
+            ③ 이름 확인 후 <b>"추가"</b>
+          </p>
+          <p style="margin:0;font-size:13px;color:#8a86a3;">홈 화면에서 일반 앱처럼 한 번에 열립니다.</p>
+        ` : `
+          <p style="margin:0 0 12px;font-size:14px;color:#5b5876;line-height:1.6;">
+            <b>Mac (Safari)</b> · 메뉴 [파일] → [Dock에 추가] 또는 [홈 화면에 추가]<br><br>
+            <b>크롬·엣지</b> · 주소창 오른쪽의 <b>설치 아이콘</b> 또는 <b>⋮ 메뉴 → "Solbox Docs 설치"</b>
+          </p>
+          <p style="margin:0;font-size:13px;color:#8a86a3;">바탕화면 / Dock 에서 한 번에 열립니다.</p>
+        `}
+        <div style="display:flex;justify-content:flex-end;margin-top:18px;">
+          <button class="install-close-btn" style="background:#c7b8ee;color:#fff;border:0;padding:8px 18px;border-radius:8px;font-weight:700;cursor:pointer;">확인</button>
+        </div>
+      </div>`;
+    document.body.appendChild(wrap);
+    const close = () => wrap.remove();
+    wrap.addEventListener('click', (e) => { if (e.target === wrap) close(); });
+    wrap.querySelector('.install-close-btn').addEventListener('click', close);
+  }
+})();
+
 const UPDATE_HISTORY = [
+  { version: "v20.4", date: "2026-05-02", desc: "📌 바로가기 만들기 버튼 추가 — PC 바탕화면 / Mac Dock / 모바일 홈 화면에 한 번에 설치 (PWA, 서비스 워커, manifest) · iOS Safari·macOS Safari 안내 모달 자동 분기" },
   { version: "v20.3", date: "2026-05-02", desc: "📝 새 문서(.docx·.hwpx) 클릭하면 바로 편집 가능 — 한글 새 문서도 워드 편집기로 캐럿 100% 동작, [💾 .hwpx] 버튼으로 저장 시 자동 변환 · 🤐 HWPX 비표준 감지 다이얼로그 사용자에게 안 보이게 — 파일 열 때 사전 자동 보정 (line_height=0 등 정리)" },
   { version: "v20.2", date: "2026-05-02", desc: "🎙️ 우하단 음성 FAB 하나로 통일 — 헤더·햄버거 음성 버튼 제거, 모드 무관 항상 표시, 편집 곳 없으면 자동으로 첫 문단 잡기 · 📝 새 .docx A4 정상 폭 + 빈 단락 3줄로 시작 · 한글 새 문서 [새 문서] 클릭하면 바로 편집 가능 (다운로드+팝업 제거) · 워드 툴바 안내문 제거" },
   { version: "v19", date: "2026-05-02", desc: "📝 워드 글씨체 변경 도구 + 무료 한글 글꼴 30+ 등록 (Google Fonts) · 📷 OCR → 워드(.docx) 자동 변환 (페이지 이미지 + 추출 글자, 표·그림 보존) · 🖱 PDF 편집 글씨/지우개 마우스로 위치 이동 · 🪟 PDF 인쇄 후 새 탭 자동 닫기" },
