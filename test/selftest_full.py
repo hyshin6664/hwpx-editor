@@ -843,6 +843,8 @@ def main():
               }
               window.SpeechRecognition = Mock;
               window.webkitSpeechRecognition = Mock;
+              // 이전 테스트에서 만든 real recognition 재초기화
+              if (window.__resetVoiceRecognition) window.__resetVoiceRecognition();
               // 첫 문단 caret
               const p = document.querySelector('#docxHost .docx p[contenteditable]');
               p.focus();

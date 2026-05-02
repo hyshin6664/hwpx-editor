@@ -3333,6 +3333,13 @@ function hideVoiceBubble() {
 micBtn.addEventListener('mousedown', (e) => e.preventDefault());
 micBtn.addEventListener('touchstart', (e) => e.preventDefault());
 
+// 자체 테스트용 — 기존 recognition 강제 제거 후 재생성
+window.__resetVoiceRecognition = () => {
+  if (recognition) { try { recognition.stop(); } catch(_){} }
+  recognition = null;
+  recognizing = false;
+};
+
 micBtn.addEventListener('click', () => {
   if (!recognition) recognition = setupRecognition();
   if (!recognition) {
