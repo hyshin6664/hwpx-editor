@@ -599,6 +599,9 @@
   @media (max-width: 720px) { .search-handle { display: block; } }
 
   /* ====== 음성 FAB (우하단 플로팅) ====== */
+  /* v21.2 — 음성 UI 전체 숨김 (완벽해질 때까지 비공개. 코드는 유지) */
+  .voice-fab, .voice-mode-toggle, .voice-bubble { display: none !important; }
+
   /* 정밀 모드 토글 — FAB 왼쪽 옆에 (절대 겹치지 않음, 말풍선과도 겹치지 않음) */
   .voice-mode-toggle {
     position: fixed; right: 88px; /* FAB right(20) + width(56) + gap(12) */
@@ -855,7 +858,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v21.1<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v21.2<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -1579,7 +1582,8 @@ async function mountPdf(file) {
     toolbar.innerHTML = `
       <button class="tool active" data-tool="pointer">👆 보기</button>
       <button class="tool" data-tool="select">🖱 선택·이동</button>
-      <button class="tool" data-tool="erase">🩹 지우개</button>
+      <button class="tool" data-tool="erase" title="드래그한 영역 전체를 주변 색으로 덮어 지움">🩹 지우개 (영역)</button>
+      <button class="tool" data-tool="erase-text" title="드래그한 영역 안의 글자만 골라서 지움 (배경·이미지·선은 그대로)">✂️ 글자만 지우기</button>
       <button class="tool" data-tool="text">✏️ 글씨</button>
       <span class="tool-sep"></span>
       <button class="tool" id="pdfUndoBtn" disabled>↶ 되돌리기</button>
@@ -1659,12 +1663,38 @@ async function mountPdf(file) {
       // PDF 좌표계 정보 (pdf-lib 저장용)
       const pdfPageWidth = viewport.width / SCALE;   // PDF points
       const pdfPageHeight = viewport.height / SCALE;
+
+      // 글자만 지우기 — textContent 추출하여 각 텍스트 항목의 canvas 좌표 bbox 계산
+      let textBoxes = [];
+      try {
+        const tc = await page.getTextContent();
+        // pdfjs textContent.items: { str, transform: [a,b,c,d,e,f], width, height }
+        // transform e,f 가 baseline 위치 (PDF 좌표). 이를 viewport 변환.
+        for (const it of (tc.items || [])) {
+          if (!it.str || !it.str.trim()) continue;
+          const tx = pdfjs.Util.transform(viewport.transform, it.transform);
+          // tx = [a,b,c,d,e,f] — text baseline at (e, f) in canvas px
+          const fontHeight = Math.hypot(tx[2], tx[3]); // 글자 높이 (canvas px)
+          const itemW = it.width * Math.hypot(viewport.transform[0], viewport.transform[1]);
+          // baseline 기준이라 위로 fontHeight 확장
+          const cx = tx[4];
+          const cy = tx[5] - fontHeight;
+          textBoxes.push({
+            str: it.str,
+            x: cx, y: cy,
+            w: itemW || (it.str.length * fontHeight * 0.5),
+            h: fontHeight * 1.15, // 약간 여유
+          });
+        }
+      } catch (_e) {}
+
       const pageState = {
         pageIndex: i - 1,
         canvas, overlay,
         viewport, scale: SCALE,
         pdfPageWidth, pdfPageHeight,
         edits: [],
+        textBoxes,
       };
       pdfState.pages.push(pageState);
       attachPageInteractions(pageState);
@@ -1774,10 +1804,91 @@ function attachPageInteractions(pg) {
     } catch (_e) { return [255, 255, 255]; }
   }
 
-  // 지우개 드래그
+  // 영역 주변 색상 통계 (평균 + 표준편차) — 가우시안 노이즈로 자연스럽게
+  function sampleColorStats(x, y, w, h) {
+    try {
+      const samples = [];
+      const probesEdge = 24; // 외곽선을 따라 골고루 24개 probe
+      // 위/아래 가로 따라
+      for (let i = 0; i < probesEdge/4; i++) {
+        const t = i / (probesEdge/4 - 1 || 1);
+        samples.push([Math.floor(x + t*w), Math.max(0, Math.floor(y - 3))]);
+        samples.push([Math.floor(x + t*w), Math.min(canvas.height-1, Math.floor(y + h + 3))]);
+      }
+      // 좌/우 세로 따라
+      for (let i = 0; i < probesEdge/4; i++) {
+        const t = i / (probesEdge/4 - 1 || 1);
+        samples.push([Math.max(0, Math.floor(x - 3)), Math.floor(y + t*h)]);
+        samples.push([Math.min(canvas.width-1, Math.floor(x + w + 3)), Math.floor(y + t*h)]);
+      }
+      const colors = [];
+      for (const [px, py] of samples) {
+        if (px<0||py<0||px>=canvas.width||py>=canvas.height) continue;
+        const d = ctx.getImageData(px, py, 1, 1).data;
+        colors.push([d[0], d[1], d[2]]);
+      }
+      if (colors.length === 0) return { mean: [255, 255, 255], std: [2, 2, 2] };
+      const mean = [0, 0, 0];
+      colors.forEach(c => { mean[0]+=c[0]; mean[1]+=c[1]; mean[2]+=c[2]; });
+      mean[0] /= colors.length; mean[1] /= colors.length; mean[2] /= colors.length;
+      const variance = [0, 0, 0];
+      colors.forEach(c => {
+        variance[0] += (c[0]-mean[0])**2; variance[1] += (c[1]-mean[1])**2; variance[2] += (c[2]-mean[2])**2;
+      });
+      const std = variance.map(v => Math.sqrt(v / colors.length));
+      return {
+        mean: mean.map(Math.round),
+        std: std.map(v => Math.max(1.5, Math.min(8, v))), // 너무 크지 않게 클램프
+      };
+    } catch (_e) { return { mean: [255, 255, 255], std: [2, 2, 2] }; }
+  }
+
+  // Box-Muller 가우시안 노이즈
+  function _gauss() {
+    const u = 1 - Math.random();
+    const v = Math.random();
+    return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+  }
+
+  // 글자 획(stroke) 만 골라서 배경색으로 채움 — 글자 바깥(원래 배경) 픽셀은 유지
+  // 알고리즘: 주변 배경 평균/편차 → bbox 안 각 픽셀 검사 → 배경과 크게 다르면(=글자 획) 만 대체
+  function paintTextStrokesOnly(tx, ty, tw, th) {
+    const stats = sampleColorStats(tx, ty, tw, th);
+    const W = Math.max(1, Math.floor(tw));
+    const H = Math.max(1, Math.floor(th));
+    const ix = Math.max(0, Math.floor(tx));
+    const iy = Math.max(0, Math.floor(ty));
+    const cw = Math.min(canvas.width - ix, W);
+    const ch = Math.min(canvas.height - iy, H);
+    if (cw <= 0 || ch <= 0) return stats.mean;
+    let img;
+    try { img = ctx.getImageData(ix, iy, cw, ch); } catch (_e) { return stats.mean; }
+    const d = img.data;
+    const mr = stats.mean[0], mg = stats.mean[1], mb = stats.mean[2];
+    // 글자 검출 임계값 — 배경 std 의 2.5배 또는 최소 24
+    const thr = Math.max(24, 2.5 * Math.max(stats.std[0], stats.std[1], stats.std[2]));
+    const halfThr = thr * 0.5;
+    for (let p = 0; p < d.length; p += 4) {
+      const r = d[p], g = d[p+1], b = d[p+2];
+      const diff = Math.max(Math.abs(r-mr), Math.abs(g-mg), Math.abs(b-mb));
+      if (diff <= halfThr) continue; // 명확한 배경 — 그대로
+      // alpha blending: 경계(antialiased) 픽셀은 부분 대체, 글자 핵심은 완전 대체
+      const alpha = Math.min(1, (diff - halfThr) / halfThr); // 0~1
+      const nr = mr + _gauss() * stats.std[0];
+      const ng = mg + _gauss() * stats.std[1];
+      const nb = mb + _gauss() * stats.std[2];
+      d[p]   = Math.max(0, Math.min(255, Math.round(r * (1 - alpha) + nr * alpha)));
+      d[p+1] = Math.max(0, Math.min(255, Math.round(g * (1 - alpha) + ng * alpha)));
+      d[p+2] = Math.max(0, Math.min(255, Math.round(b * (1 - alpha) + nb * alpha)));
+    }
+    ctx.putImageData(img, ix, iy);
+    return stats.mean;
+  }
+
+  // 지우개 드래그 (영역 지우개 + 글자만 지우기 둘 다)
   let dragSel = null;
   function onDown(e) {
-    if (pdfState.tool !== 'erase') return;
+    if (pdfState.tool !== 'erase' && pdfState.tool !== 'erase-text') return;
     e.preventDefault();
     const { cx, cy } = toCanvasPx(e);
     dragSel = { startCx: cx, startCy: cy, el: null };
@@ -1813,10 +1924,44 @@ function attachPageInteractions(pg) {
     if (dragSel.el) dragSel.el.remove();
     dragSel = null;
     if (w < 4 || h < 4) return;
-    const color = sampleAvgColor(x, y, w, h);
     // undo 위해 snapshot 먼저
     const snapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    // 화면 그리기
+
+    // ✂️ 글자만 지우기 — 드래그 영역과 교차하는 textBoxes 만 골라서 각 텍스트 박스 단위로 색칠
+    if (pdfState.tool === 'erase-text') {
+      const dragLeft = x, dragTop = y, dragRight = x+w, dragBottom = y+h;
+      const hits = (pg.textBoxes || []).filter(tb =>
+        tb.x < dragRight && tb.x + tb.w > dragLeft &&
+        tb.y < dragBottom && tb.y + tb.h > dragTop
+      );
+      if (hits.length === 0) {
+        // 영역 안에 텍스트 없음 — 안내 (한 번만 살짝)
+        return;
+      }
+      // 각 텍스트 박스 별 paintNaturalBg — 가우시안 노이즈 배경, 흔적 안 남게
+      ctx.save();
+      const textErases = [];
+      for (const tb of hits) {
+        const tx = Math.max(0, tb.x - 1);
+        const ty = Math.max(0, tb.y - 1);
+        const tw = Math.min(canvas.width - tx, tb.w + 2);
+        const th = Math.min(canvas.height - ty, tb.h + 2);
+        const tcolor = paintTextStrokesOnly(tx, ty, tw, th); // 글자 획만 배경색으로 대체, 주변 그대로
+        const pc = toPdfCoords(tx, ty, tw, th);
+        textErases.push({ ...pc, color: tcolor });
+      }
+      ctx.restore();
+      const edit = { type: 'erase-text', boxes: textErases, _displayPx: { hits, x, y, w, h } };
+      pg.edits.push(edit);
+      pdfState.undoStack.push({ pageIdx: pg.pageIndex, edit, snapshot });
+      pdfState.redoStack = [];
+      pdfState.refreshUndoBtns();
+      scheduleAutoSave();
+      return;
+    }
+
+    // 기존 영역 지우개
+    const color = sampleAvgColor(x, y, w, h);
     ctx.save();
     ctx.fillStyle = `rgb(${color[0]},${color[1]},${color[2]})`;
     ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
@@ -2453,6 +2598,15 @@ savePdfBtn.addEventListener("click", async () => {
               color: pdfLib.rgb(ed.color[0]/255, ed.color[1]/255, ed.color[2]/255),
               borderWidth: 0,
             });
+          } else if (ed.type === 'erase-text') {
+            // 글자만 지우기 — 각 글자 박스 단위로 배경색 사각형
+            for (const box of (ed.boxes || [])) {
+              page.drawRectangle({
+                x: box.x, y: box.y, width: box.w, height: box.h,
+                color: pdfLib.rgb(box.color[0]/255, box.color[1]/255, box.color[2]/255),
+                borderWidth: 0,
+              });
+            }
           } else if (ed.type === 'image' && ed.bytes) {
             try {
               const isPng = ed.mime && ed.mime.indexOf('png') >= 0;
@@ -3114,6 +3268,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v21.2", date: "2026-05-02", desc: "✂️ PDF 글자만 지우기 도구 추가 — 드래그 영역 안의 텍스트 객체(pdfjs textContent)만 골라서 글자 획만 배경색으로 대체. 주변 배경/이미지/선은 그대로. 가우시안 노이즈 + alpha blending 으로 경계선 부드럽게 → '아무도 모르게' 깔끔히 지움. 영역 지우개(🩹)는 그대로 유지. · 음성 UI 일시 숨김 (완벽해질 때까지)" },
   { version: "v21.1", date: "2026-05-02", desc: "🎙️ 모바일 음성 UX 개선 — ⚙️ 정밀 모드 토글을 FAB 왼쪽 옆으로 이동(겹침·말풍선 충돌 해결) · 마이크 누르고 말해도 1-2초 동안 반응 없는 듯 보이던 문제: '🎙️ 듣고 있어요… (한국어는 문장 끝에 한 번에 표시)' 안내 즉시 + 5초 무반응 시 '💡 즉시 표시 원하면 ⚙️ (정밀 모드) 켜기' 안내 자동 표시" },
   { version: "v21.0", date: "2026-05-02", desc: "🚀 정밀 음성 모드 (Moonshine Tiny Korean ASR) — 우하단 ⚙️ 토글로 켜면 50MB 모델 1회 다운로드 (PWA 영구 캐싱) → 그 후 인터넷 없이도 100% 로컬, 말하는 즉시 글자 표시. CER 6.46% (Whisper-tiny-ko 의 2배 정확). transformers.js v3.5 + Silero VAD 통합 + Web Worker 분리 (UI freeze 방지) · iOS Safari 는 ONNX Runtime JSEP 메모리 폭증 버그(#26827) 회피 위해 정밀 모드 비활성 (Web Speech API 그대로) · Web Speech API 가 한국어를 sentence-boundary 단위로 chunking 해서 1-2초 지연됐던 문제를 정밀 모드로 우회" },
   { version: "v20.13", date: "2026-05-02", desc: "🧹 헤더 진짜 1줄로 — setMode 가 setMode 가 .hwpx/.docx/PDF/음성/OCR 버튼을 style.display=''로 다시 보이게 하던 버그 수정 (display:none !important 영구 고정). 헤더 7개로 압축: [열기·새문서·저장▾·인쇄·닫기·찾기·메뉴]. 음성/OCR 은 우하단 FAB·햄버거에서 접근. · 📌 바로가기 버튼 텍스트 안 보이던 문제 (flex-shrink:0 + white-space:nowrap)" },
