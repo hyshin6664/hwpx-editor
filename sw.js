@@ -1,6 +1,8 @@
 // Solbox Docs SW — index.html 은 항상 네트워크 우선(새 버전 즉시 반영), 그 외만 cache-first
-const CACHE = 'solbox-docs-v4';
-const ASSETS = ['./manifest.json', './icon-192.svg', './icon-512.svg'];
+const CACHE = 'solbox-docs-v5';
+const ASSETS = ['./manifest.json', './icon-192.svg', './icon-512.svg', './voice-worker.js'];
+// Moonshine 모델 + transformers.js + VAD 는 Range request 를 자주 쓰므로 별도 캐시
+const MOONSHINE_CACHE = 'solbox-moonshine-v1';
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).catch(()=>{}));
@@ -37,6 +39,21 @@ self.addEventListener('fetch', (e) => {
         caches.open(CACHE).then(c => c.put(req, copy)).catch(()=>{});
         return res;
       }).catch(() => caches.match(req).then(c => c || caches.match('./index.html')))
+    );
+    return;
+  }
+  // Moonshine 모델 / transformers.js / VAD (cdn.jsdelivr 또는 huggingface.co) — 별도 캐시 cache-first
+  // 첫 다운로드 후 영구 캐싱 (50MB 모델은 한 번만 받음)
+  if (/cdn\.jsdelivr\.net.*(transformers|moonshine|vad-web|onnxruntime)/.test(req.url)
+      || /huggingface\.co.*moonshine/.test(req.url)) {
+    e.respondWith(
+      caches.open(MOONSHINE_CACHE).then(cache =>
+        cache.match(req).then(cached => cached || fetch(req).then(res => {
+          // ok response 만 캐싱 (range request 의 partial 206 는 제외)
+          if (res.ok && res.status === 200) cache.put(req, res.clone()).catch(()=>{});
+          return res;
+        }))
+      )
     );
     return;
   }
