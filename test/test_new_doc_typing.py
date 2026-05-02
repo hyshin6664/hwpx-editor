@@ -71,7 +71,7 @@ def main():
         # 새 한글 → .hwpx 다운로드 가능?
         try:
             with page.expect_download(timeout=30000) as di:
-                page.click("#saveHwpxBtn")
+                page.click("#saveHwpxBtn", force=True)
             dl = di.value
             p = OUT / "newdoc_hwpx.hwpx"; dl.save_as(str(p))
             step("[새 한글] → .hwpx 저장", p.exists() and p.stat().st_size > 1000, f"{p.stat().st_size if p.exists() else 0} bytes")

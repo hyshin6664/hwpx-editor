@@ -116,6 +116,14 @@
   @media (max-width: 720px) {
     .install-btn { padding: 5px 10px; font-size: 11px; margin-left: 4px; }
   }
+  /* 헤더에서 영구 숨김 — 화면 안 보이지만 click 은 프로그래매틱으로 가능 (screen-reader 패턴) */
+  .hidden-action-btn {
+    position: absolute !important;
+    width: 1px !important; height: 1px !important;
+    padding: 0 !important; margin: -1px !important; border: 0 !important;
+    clip: rect(0 0 0 0) !important; overflow: hidden !important;
+    top: 0; left: 0;
+  }
 
   /* 소식 모달 */
   .news-overlay {
@@ -852,18 +860,18 @@
         <button class="save-item" data-fmt="pdf"  style="display:block;width:100%;text-align:left;padding:9px 14px;border:none;background:transparent;cursor:pointer;font:inherit;color:var(--text)">📄 .pdf (PDF)</button>
       </div>
     </div>
-    <!-- 기존 개별 버튼: DOM에는 두지만 화면에서는 영구 숨김 (자체 테스트와 saveBtn dropdown 이 click 으로 호출) -->
-    <button class="btn primary" id="saveHwpxBtn" style="display:none !important" disabled><span class="ico">💾</span><span class="label">.hwpx</span></button>
-    <button class="btn" id="saveHwpBtn" style="display:none !important" disabled><span class="ico">💾</span><span class="label">.hwp</span></button>
-    <button class="btn" id="saveDocxBtn" style="display:none !important" disabled><span class="ico">💾</span><span class="label">.docx</span></button>
-    <button class="btn" id="savePdfBtn" style="display:none !important" disabled><span class="ico">📄</span><span class="label">PDF</span></button>
+    <!-- 개별 버튼: DOM 에 두되 화면에서는 안 보임 (saveBtn dropdown 이 호출. 자체 테스트는 force 클릭) -->
+    <button class="btn primary hidden-action-btn" id="saveHwpxBtn" disabled aria-hidden="true"><span class="ico">💾</span><span class="label">.hwpx</span></button>
+    <button class="btn hidden-action-btn" id="saveHwpBtn" disabled aria-hidden="true"><span class="ico">💾</span><span class="label">.hwp</span></button>
+    <button class="btn hidden-action-btn" id="saveDocxBtn" disabled aria-hidden="true"><span class="ico">💾</span><span class="label">.docx</span></button>
+    <button class="btn hidden-action-btn" id="savePdfBtn" disabled aria-hidden="true"><span class="ico">📄</span><span class="label">PDF</span></button>
     <button class="btn" id="printBtn" disabled title="바로 인쇄"><span class="ico">🖨️</span><span class="label">인쇄</span></button>
     <button class="btn" id="closeBtn" disabled title="문서 닫기"><span class="ico">✕</span><span class="label">닫기</span></button>
   </div>
 
   <!-- 헤더 간소화: OCR/음성 은 우하단 FAB 또는 메뉴 안으로. DOM 만 유지 (자체 테스트·메뉴 핸들러용) -->
-  <button class="btn" id="micBtn" style="display:none !important" disabled title="음성 입력 (한국어)"><span class="ico">🎙️</span><span class="label">음성</span></button>
-  <button class="btn" id="ocrBtn" style="display:none !important" disabled title="OCR (이미지에서 글자 추출)"><span class="ico">📷</span><span class="label">OCR</span></button>
+  <button class="btn hidden-action-btn" id="micBtn" disabled aria-hidden="true" title="음성 입력 (한국어)"><span class="ico">🎙️</span><span class="label">음성</span></button>
+  <button class="btn hidden-action-btn" id="ocrBtn" disabled aria-hidden="true" title="OCR (이미지에서 글자 추출)"><span class="ico">📷</span><span class="label">OCR</span></button>
   <button class="btn" id="searchToggleBtn" disabled title="검색 (Ctrl+F)"><span class="ico">🔍</span><span class="label">찾기</span></button>
   <button class="btn" id="hamburgerBtn" title="더보기" aria-label="메뉴"><span class="ico">≡</span><span class="label">메뉴</span></button>
   <input type="file" id="picker" accept=".hwp,.hwpx,.pdf,.docx,.doc">

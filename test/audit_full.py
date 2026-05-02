@@ -71,13 +71,13 @@ def main():
 
             # 6) docx 저장
             with page.expect_download(timeout=15000) as di:
-                page.click("#saveDocxBtn")
+                page.click("#saveDocxBtn", force=True)
             dl = di.value; p = OUT/"audit_pc.docx"; dl.save_as(str(p))
             step("PC: .docx 다운로드", p.exists() and p.stat().st_size>500, f"{p.stat().st_size}바이트")
 
             # 7) cross-format → .hwpx
             with page.expect_download(timeout=30000) as di:
-                page.click("#saveHwpxBtn")
+                page.click("#saveHwpxBtn", force=True)
             dl = di.value; p = OUT/"audit_pc.hwpx"; dl.save_as(str(p))
             step("PC: docx→hwpx 변환 다운로드", p.exists() and p.stat().st_size>500, f"{p.stat().st_size}바이트")
 
@@ -93,7 +93,7 @@ def main():
             page.keyboard.press("End"); page.keyboard.type(" 한글편집", delay=15)
             page.wait_for_timeout(200)
             with page.expect_download(timeout=30000) as di:
-                page.click("#saveHwpxBtn")
+                page.click("#saveHwpxBtn", force=True)
             dl = di.value; p = OUT/"audit_new.hwpx"; dl.save_as(str(p))
             step("PC: 새 hwpx 즉시 편집+저장", p.exists() and p.stat().st_size>500, f"{p.stat().st_size}바이트")
 
@@ -128,7 +128,7 @@ def main():
 
                 # PDF 저장
                 with page.expect_download(timeout=30000) as di:
-                    page.click("#savePdfBtn")
+                    page.click("#savePdfBtn", force=True)
                 dl = di.value; p = OUT/"audit.pdf"; dl.save_as(str(p))
                 step("PC: PDF 저장", p.exists() and p.stat().st_size>1000, f"{p.stat().st_size}바이트")
 
@@ -142,7 +142,7 @@ def main():
                 step("PC: HWPX 로드 (사전 보정)", True)
                 # cross-format → docx
                 with page.expect_download(timeout=120000) as di:
-                    page.click("#saveDocxBtn")
+                    page.click("#saveDocxBtn", force=True)
                 dl = di.value; p = OUT/"audit_hwpx_to.docx"; dl.save_as(str(p))
                 step("PC: HWPX→docx 변환", p.exists() and p.stat().st_size>500, f"{p.stat().st_size}바이트")
                 page.click("#closeBtn"); page.wait_for_timeout(300)

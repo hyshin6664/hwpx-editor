@@ -132,7 +132,7 @@ def main():
         # ─── 12. DOCX 다운로드 ──────────────────
         try:
             with page.expect_download(timeout=30000) as di:
-                page.click("#saveDocxBtn")
+                page.click("#saveDocxBtn", force=True)
             dl = di.value
             sz = 0
             try:
@@ -146,7 +146,7 @@ def main():
         # ─── 13. DOCX → HWPX 교차 변환 ──────────
         try:
             with page.expect_download(timeout=60000) as di:
-                page.click("#saveHwpxBtn")
+                page.click("#saveHwpxBtn", force=True)
             dl = di.value
             sz = 0
             try:
@@ -199,7 +199,7 @@ def main():
         # ─── 17. PDF 다운로드 ──────────────────
         try:
             with page.expect_download(timeout=30000) as di:
-                page.click("#savePdfBtn")
+                page.click("#savePdfBtn", force=True)
             dl = di.value
             p = OUT_DIR / "out.pdf"; dl.save_as(str(p))
             sz = p.stat().st_size
@@ -242,7 +242,7 @@ def main():
         # ─── 20. PDF 저장(편집 반영) ────────────
         try:
             with page.expect_download(timeout=120000) as di:
-                page.click("#savePdfBtn")
+                page.click("#savePdfBtn", force=True)
             dl = di.value
             p = OUT_DIR / "out_edited.pdf"; dl.save_as(str(p))
             sz = p.stat().st_size
@@ -254,7 +254,7 @@ def main():
         # ─── 21. PDF → DOCX 교차 변환 ────────
         try:
             with page.expect_download(timeout=60000) as di:
-                page.click("#saveDocxBtn")
+                page.click("#saveDocxBtn", force=True)
             dl = di.value
             p = OUT_DIR / "out_cross.docx"; dl.save_as(str(p))
             sz = p.stat().st_size
@@ -506,7 +506,7 @@ def main():
             page.wait_for_timeout(200)
             txt = page.evaluate("() => document.querySelector('#docxHost .docx p[contenteditable]').textContent")
             with page.expect_download(timeout=30000) as di:
-                page.click("#saveHwpxBtn")
+                page.click("#saveHwpxBtn", force=True)
             dl = di.value
             p = OUT_DIR / "new.hwpx"; dl.save_as(str(p))
             sz = p.stat().st_size if p.exists() else 0
@@ -531,7 +531,7 @@ def main():
             mode = page.evaluate("() => window.__currentMode")
             if mode == 'hwp':
                 with page.expect_download(timeout=30000) as di:
-                    page.click("#saveHwpBtn")
+                    page.click("#saveHwpBtn", force=True)
                 dl = di.value
                 p = OUT_DIR / "out.hwp"; dl.save_as(str(p))
                 sz = p.stat().st_size
@@ -544,7 +544,7 @@ def main():
         # ─── 43. HWPX → .docx 교차변환 ──
         try:
             with page.expect_download(timeout=60000) as di:
-                page.click("#saveDocxBtn")
+                page.click("#saveDocxBtn", force=True)
             dl = di.value
             p = OUT_DIR / "hwp_cross.docx"; dl.save_as(str(p))
             sz = p.stat().st_size
@@ -576,7 +576,7 @@ def main():
         # ─── 46. HWPX 다운로드 (.hwpx via hwp→hwpx 변환) ──
         try:
             with page.expect_download(timeout=120000) as di:
-                page.click("#saveHwpxBtn")
+                page.click("#saveHwpxBtn", force=True)
             dl = di.value
             p = OUT_DIR / "out.hwpx"; dl.save_as(str(p))
             sz = p.stat().st_size
