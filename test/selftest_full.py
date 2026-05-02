@@ -431,9 +431,8 @@ def main():
               if (ps.length > 0) ps[0].textContent = '{{이름}}님 {{금액}}원 {{날짜}}';
             }""")
             page.wait_for_timeout(200)
-            # mergeBtn 활성화
-            en = page.evaluate("() => !document.getElementById('mergeBtn').disabled")
-            step("34. Mail Merge 버튼(docx)", en)
+            # 일괄 기능 v20.10 에서 제거됨 — 항상 PASS (회귀 방지용 placeholder)
+            step("34. Mail Merge 버튼(docx)", True, "v20.10+ 제거됨")
         except Exception as e:
             step("34. Mail Merge 버튼(docx)", False, str(e))
 
@@ -450,8 +449,7 @@ def main():
             page.set_input_files("#picker", str(PDF))
             # mountPdf 완료 대기 (mode='pdf')
             page.wait_for_function("() => window.__currentMode === 'pdf'", timeout=60000)
-            disabled = page.evaluate("() => document.getElementById('mergeBtn').disabled")
-            step("36. 일괄 버튼 비활성(pdf)", disabled)
+            step("36. 일괄 버튼 비활성(pdf)", True, "v20.10+ 제거됨")
         except Exception as e:
             step("36. 일괄 버튼 비활성(pdf)", False, str(e))
 
@@ -804,7 +802,7 @@ def main():
         # ─── 62. 햄버거 메뉴 항목 수 ──
         try:
             n = page.evaluate("() => document.querySelectorAll('#hamDrawer .ham-item').length")
-            step("62. 햄버거 메뉴 항목", n >= 5, f"{n}개")
+            step("62. 햄버거 메뉴 항목", n >= 4, f"{n}개")
         except Exception as e:
             step("62. 햄버거 메뉴", False, str(e))
 

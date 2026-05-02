@@ -864,7 +864,7 @@
   <button class="btn" id="ocrBtn" hidden disabled title="OCR (이미지에서 글자 추출)"><span class="ico">📷</span><span class="label">OCR</span></button>
   <button class="btn" id="searchToggleBtn" disabled title="검색 (Ctrl+F)"><span class="ico">🔍</span><span class="label">찾기</span></button>
   <button class="btn" id="hamburgerBtn" title="더보기" aria-label="메뉴"><span class="ico">≡</span><span class="label">메뉴</span></button>
-  <input type="file" id="picker" accept=".hwp,.hwpx,.pdf,.docx">
+  <input type="file" id="picker" accept=".hwp,.hwpx,.pdf,.docx,.doc">
 </div>
 
 <!-- 모바일 하단 액션 바 (≤720px 에서만 표시) -->
@@ -1307,7 +1307,38 @@ async function loadFile(file) {
   if (lower.endsWith(".hwp") || lower.endsWith(".hwpx")) newMode = 'hwp';
   else if (lower.endsWith(".pdf")) newMode = 'pdf';
   else if (lower.endsWith(".docx")) newMode = 'docx';
-  else { alert("지원 형식: .hwp · .hwpx · .pdf · .docx"); return; }
+  else if (lower.endsWith(".doc")) {
+    // 구버전 워드(.doc) — 자동으로 텍스트 추출하여 신버전(.docx) 으로 변환 후 마운트
+    try {
+      showLoading("구버전 워드(.doc) 자동 변환 중…", "텍스트 추출");
+      const buf = await file.arrayBuffer();
+      const text = extractTextFromDoc(buf);
+      const newName = file.name.replace(/\.doc$/i, "_변환됨.docx");
+      const docxLib = await import("https://cdn.jsdelivr.net/npm/docx@9.6.1/+esm");
+      const lines = text.split(/\r?\n/);
+      const doc = new docxLib.Document({
+        sections: [{
+          properties: { page: { size: { width: 11906, height: 16838 }, margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 } } },
+          children: lines.length > 0
+            ? lines.map(l => new docxLib.Paragraph({ children: [new docxLib.TextRun(l)] }))
+            : [new docxLib.Paragraph({ children: [new docxLib.TextRun("(빈 문서)")] })],
+        }],
+      });
+      const blob = await docxLib.Packer.toBlob(doc);
+      const newFile = new File([blob], newName, { type: blob.type });
+      hideLoading();
+      log("info", `.doc → .docx 자동 변환 완료 (${text.length} 글자)`);
+      // alert 없이 자동 진행 — 사용자가 신경 쓸 필요 없음
+      clearAllHostsAndState();
+      return mountDocx(newFile);
+    } catch (e) {
+      hideLoading();
+      console.error(e);
+      alert("구버전 워드(.doc) 변환 실패: " + (e && e.message ? e.message : e) + "\n\n해결 방법: Word/한글에서 .docx 로 다른 이름 저장 후 다시 올려주세요.");
+      return;
+    }
+  }
+  else { alert("지원 형식: .hwp · .hwpx · .doc · .docx · .pdf"); return; }
 
   // 모드 전환 또는 같은 모드 새 파일 — 항상 호스트 청소
   clearAllHostsAndState();
@@ -1315,6 +1346,42 @@ async function loadFile(file) {
   if (newMode === 'hwp') return mountHwp(file);
   if (newMode === 'pdf') return mountPdf(file);
   if (newMode === 'docx') return mountDocx(file);
+}
+
+// 구버전 워드(.doc) 바이너리에서 한글·영문 텍스트 추출 (간단 OLE/CFB 전수 스캔)
+// 정밀 파싱은 못 하지만 본문 텍스트 대부분 캡처 — 사용자가 즉시 편집 가능
+function extractTextFromDoc(arrayBuffer) {
+  const u8 = new Uint8Array(arrayBuffer);
+  const len = u8.byteLength;
+  // .doc 는 OLE Compound File. WordDocument 스트림 안에 본문(UTF-16LE / 또는 cp949) 이 들어있음.
+  // 정확한 파싱 대신: ① UTF-16LE 디코드 시도 + 한글/ASCII 영역 추출, ② 잡 노이즈 제거
+  let utf16 = '';
+  try {
+    // BOM 또는 일반 UTF-16LE 영역 추출 (홀수 바이트 무시)
+    const half = Math.floor(len / 2);
+    const view = new Uint16Array(arrayBuffer, 0, half);
+    let buf = '';
+    for (let i = 0; i < view.length; i++) {
+      const c = view[i];
+      // 한글(가-힣 0xAC00~0xD7A3), ASCII(0x20~0x7E), 한글 자모, 줄바꿈, 공백
+      if ((c >= 0xAC00 && c <= 0xD7A3) || (c >= 0x20 && c <= 0x7E) ||
+          c === 0x000A || c === 0x000D || c === 0x0009 ||
+          (c >= 0x3040 && c <= 0x30FF)) { // 일본어 가타가나/히라가나
+        buf += String.fromCharCode(c);
+      } else {
+        if (buf.length >= 4) utf16 += buf + '\n';
+        buf = '';
+      }
+    }
+    if (buf.length >= 4) utf16 += buf + '\n';
+  } catch (_) {}
+  // 정리: 너무 짧은 라인·반복 노이즈 제거
+  const cleaned = utf16
+    .split(/\n+/)
+    .filter(l => l.length >= 4 && /[가-힣ㄱ-ㅎㅏ-ㅣa-zA-Z0-9]/.test(l))
+    .filter(l => !/^[\s\.\-_=]+$/.test(l))
+    .join('\n');
+  return cleaned || '(텍스트 추출 실패 — Word/한글에서 .docx 로 다시 저장해주세요)';
 }
 
 // 모든 모드 호스트·상태 청소 (모드 전환 시) — 메모리 누수 방지
