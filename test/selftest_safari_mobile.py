@@ -89,7 +89,10 @@ def run(engine_name, launch_fn, viewport, ua=None):
             try:
                 save_selector = '#mbSaveBtn' if is_mobile else '#saveDocxBtn'
                 with page.expect_download(timeout=20000) as di:
-                    page.click(save_selector)
+                    if is_mobile:
+                        page.click(save_selector)
+                    else:
+                        page.evaluate("document.getElementById('saveDocxBtn').click()")
                 dl = di.value
                 p = OUT_DIR / f"saved_{engine_name}.docx"; dl.save_as(str(p))
                 step("저장 + 다운로드", p.exists() and p.stat().st_size > 1000, f"{p.stat().st_size if p.exists() else 0} bytes")
