@@ -3530,6 +3530,7 @@ async function exportPdfAsIdenticalDocx() {
             children: [
               new docxLib.ImageRun({
                 data: ab,
+                type: "png",
                 transformation: { width: widthPx, height: heightPx },
               }),
             ],
