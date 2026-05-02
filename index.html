@@ -4803,15 +4803,18 @@ ocrBtn.addEventListener('click', async () => {
     showLoading("워드 변환 중…", "표·셀·텍스트 구조 분석");
     const docxBlob = await exportPdfAsIdenticalDocx({ returnBlobInsteadOfDownload: true });
     hideLoading();
-    // 다운로드 X — 앱 안에서 워드 모드로 직접 마운트 (사용자가 표/그림 확실히 구분 가능)
     const fname = setBaseName() + "_OCR.docx";
     const file = new File([docxBlob], fname, {
       type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
     });
     showLoading("워드 모드로 띄우는 중…", "표·텍스트가 편집 가능한 형태로 표시됩니다");
+    // ⚠️ PDF 호스트·toolbar·state 정리 (없으면 PDF 도구바가 docx 모드와 함께 보임)
+    clearAllHostsAndState();
+    currentFilename = fname;
+    filenameLabel.textContent = fname;
     await mountDocx(file);
     hideLoading();
-    log("info", `OCR → 워드 변환 완료: ${pdfState ? pdfState.pages.length : 0} 페이지 (앱 내 표시)`);
+    log("info", `OCR → 워드 변환 완료 — 앱 내 워드 모드로 표시`);
   } catch (err) {
     hideLoading();
     console.error(err);
