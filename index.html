@@ -786,7 +786,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v20.2<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v20.3<span class="dot"></span></button>
   </div>
   <span class="filename" id="filenameLabel"></span>
   <span id="wordCount" style="margin-left:8px;font-size:11px;color:var(--text-muted);font-weight:500"></span>
@@ -2807,6 +2807,7 @@ setMode = function(m) {
 
 // === 업데이트 내역 (소식) ===
 const UPDATE_HISTORY = [
+  { version: "v20.3", date: "2026-05-02", desc: "📝 새 문서(.docx·.hwpx) 클릭하면 바로 편집 가능 — 한글 새 문서도 워드 편집기로 캐럿 100% 동작, [💾 .hwpx] 버튼으로 저장 시 자동 변환 · 🤐 HWPX 비표준 감지 다이얼로그 사용자에게 안 보이게 — 파일 열 때 사전 자동 보정 (line_height=0 등 정리)" },
   { version: "v20.2", date: "2026-05-02", desc: "🎙️ 우하단 음성 FAB 하나로 통일 — 헤더·햄버거 음성 버튼 제거, 모드 무관 항상 표시, 편집 곳 없으면 자동으로 첫 문단 잡기 · 📝 새 .docx A4 정상 폭 + 빈 단락 3줄로 시작 · 한글 새 문서 [새 문서] 클릭하면 바로 편집 가능 (다운로드+팝업 제거) · 워드 툴바 안내문 제거" },
   { version: "v19", date: "2026-05-02", desc: "📝 워드 글씨체 변경 도구 + 무료 한글 글꼴 30+ 등록 (Google Fonts) · 📷 OCR → 워드(.docx) 자동 변환 (페이지 이미지 + 추출 글자, 표·그림 보존) · 🖱 PDF 편집 글씨/지우개 마우스로 위치 이동 · 🪟 PDF 인쇄 후 새 탭 자동 닫기" },
   { version: "v18", date: "2026-05-02", desc: "🎙️ 음성 우하단 FAB(펄스 빨강) + 실시간 인식(interim) + 미리보기 말풍선 · 📱 모바일 화면 자동 맞춤 (작은 폰 자동축소, 태블릿 좌우 스크롤) · PDF 썸네일 자동 숨김" },
