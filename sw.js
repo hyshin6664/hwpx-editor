@@ -1,6 +1,6 @@
-// 최소 서비스 워커 — PWA 설치 가능 + 첫 방문 후 오프라인 fallback
-const CACHE = 'solbox-docs-v1';
-const ASSETS = ['./', './index.html', './manifest.json'];
+// Solbox Docs SW — index.html 은 항상 네트워크 우선(새 버전 즉시 반영), 그 외만 cache-first
+const CACHE = 'solbox-docs-v3';
+const ASSETS = ['./manifest.json'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).catch(()=>{}));
@@ -10,20 +10,33 @@ self.addEventListener('install', (e) => {
 self.addEventListener('activate', (e) => {
   e.waitUntil(caches.keys().then(keys =>
     Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
-  ));
-  self.clients.claim();
+  ).then(() => self.clients.claim()));
 });
 
 self.addEventListener('fetch', (e) => {
-  // 같은 출처 GET 만 cache-first, 그 외(CDN, 외부 fonts)는 그냥 통과
-  const url = new URL(e.request.url);
-  if (e.request.method !== 'GET') return;
-  if (url.origin !== location.origin) return;
+  const req = e.request;
+  if (req.method !== 'GET') return;
+  const url = new URL(req.url);
+  if (url.origin !== location.origin) return; // CDN 패스
+
+  // index.html / 루트 / HTML — network-first (항상 최신)
+  const isHtml = url.pathname.endsWith('/') || url.pathname.endsWith('/index.html') || req.destination === 'document';
+  if (isHtml) {
+    e.respondWith(
+      fetch(req).then(res => {
+        const copy = res.clone();
+        caches.open(CACHE).then(c => c.put(req, copy)).catch(()=>{});
+        return res;
+      }).catch(() => caches.match(req).then(c => c || caches.match('./index.html')))
+    );
+    return;
+  }
+  // 그 외 (manifest, sw.js, 정적 자원) — cache-first
   e.respondWith(
-    caches.match(e.request).then(cached => cached || fetch(e.request).then(res => {
+    caches.match(req).then(cached => cached || fetch(req).then(res => {
       const copy = res.clone();
-      caches.open(CACHE).then(c => c.put(e.request, copy)).catch(()=>{});
+      caches.open(CACHE).then(c => c.put(req, copy)).catch(()=>{});
       return res;
-    }).catch(() => caches.match('./index.html')))
+    }).catch(() => null))
   );
 });

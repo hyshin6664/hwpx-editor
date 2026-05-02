@@ -900,6 +900,25 @@ def main():
         except Exception as e:
             step("69. PWA", False, str(e))
 
+        # ─── 70-pre. SW 캐시된 사용자 시나리오 — 두 번 방문해도 최신 버전 받는지 ──
+        try:
+            # 1) 첫 방문 — SW 등록될 때까지 대기
+            page2 = ctx.new_page()
+            page2.goto(URL, wait_until="domcontentloaded", timeout=60000)
+            page2.wait_for_function("async () => { const r = await navigator.serviceWorker.getRegistration(); return r && r.active; }", timeout=20000)
+            v1 = page2.evaluate("() => document.getElementById('verBtn').textContent.split('v')[1]?.split(/[^0-9.]/)[0]")
+            page2.close()
+            # 2) 두 번째 방문 — SW 가 캐시 줘도 버전은 최신이어야 (network-first for HTML)
+            page3 = ctx.new_page()
+            page3.goto(URL, wait_until="domcontentloaded", timeout=60000)
+            page3.wait_for_function("() => window.__editorReady === true", timeout=60000)
+            v2 = page3.evaluate("() => document.getElementById('verBtn').textContent.split('v')[1]?.split(/[^0-9.]/)[0]")
+            page3.close()
+            ok = v1 and v2 and v1 == v2
+            step("70-pre. 재방문 시 최신 버전(SW network-first)", ok, f"1차={v1}, 2차={v2}")
+        except Exception as e:
+            step("70-pre. SW 재방문 최신", False, str(e))
+
         # ─── 70. 새 docx 워드 폰트 옵션 + 굵게 동작 ──
         try:
             r = page.evaluate("""() => {

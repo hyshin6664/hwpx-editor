@@ -821,7 +821,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v20.5<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v20.6<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="이 편집기를 PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가합니다 — 다음부터 한 번에 열기" hidden>📌 바탕화면에 추가</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -2846,9 +2846,24 @@ setMode = function(m) {
 // PWA — 바탕화면(PC) / 홈 화면(모바일) 바로가기 설치 버튼
 // =============================================================
 (function setupInstall() {
-  // Service Worker 등록 (실패해도 무시)
+  // Service Worker 등록 + 업데이트 감지 → 새 버전 활성화되면 페이지 자동 새로고침 (한 번만)
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js').catch(()=>{});
+    navigator.serviceWorker.register('./sw.js').then(reg => {
+      // 페이지 로드 후 주기적으로 SW 업데이트 체크 (시간당 1회)
+      setInterval(() => { try { reg.update(); } catch(_){} }, 3600000);
+    }).catch(()=>{});
+    // 새 SW 가 활성화되면(controllerchange) 한 번만 새로고침 → 사용자가 항상 최신 버전을 봄
+    let _swReloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (_swReloaded) return;
+      _swReloaded = true;
+      // 첫 방문(아직 controller 없을 때)은 새로고침 X — 두 번째 이후 업데이트만 적용
+      if (sessionStorage.getItem('solbox_first_load') === 'done') {
+        location.reload();
+      } else {
+        sessionStorage.setItem('solbox_first_load', 'done');
+      }
+    });
   }
   const installBtn = document.getElementById('installBtn');
   if (!installBtn) return;
@@ -2929,6 +2944,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v20.6", date: "2026-05-02", desc: "🔄 서비스 워커 network-first(HTML) — 사용자 재방문 시 항상 최신 버전 받음 (이전 버전은 SW 가 옛 index.html 캐시해서 새 배포가 안 보였던 버그 수정) · SW 업데이트 자동 감지 + 1회 새로고침 · 재방문 시나리오 자체 테스트(#70-pre) 영구 등록" },
   { version: "v20.5", date: "2026-05-02", desc: "🖥 PC에서 워드 페이지 시각적으로 충분히 크게 (1100px+ → 1.25배, 1400px+ → 1.4배, 1700px+ → 1.55배 zoom) — 모바일은 기존 fitDocxToViewport 그대로 · 📌 바로가기 버튼 기기에 따라 자동 라벨 (PC '바탕화면에 추가' / 모바일 '홈 화면에 추가') + 더 친절한 툴팁" },
   { version: "v20.4", date: "2026-05-02", desc: "📌 바로가기 만들기 버튼 추가 — PC 바탕화면 / Mac Dock / 모바일 홈 화면에 한 번에 설치 (PWA, 서비스 워커, manifest) · iOS Safari·macOS Safari 안내 모달 자동 분기" },
   { version: "v20.3", date: "2026-05-02", desc: "📝 새 문서(.docx·.hwpx) 클릭하면 바로 편집 가능 — 한글 새 문서도 워드 편집기로 캐럿 100% 동작, [💾 .hwpx] 버튼으로 저장 시 자동 변환 · 🤐 HWPX 비표준 감지 다이얼로그 사용자에게 안 보이게 — 파일 열 때 사전 자동 보정 (line_height=0 등 정리)" },
