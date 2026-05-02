@@ -1672,28 +1672,133 @@ async function mountPdf(file) {
       const pdfPageHeight = viewport.height / SCALE;
 
       // 글자만 지우기 — textContent 추출하여 각 텍스트 항목의 canvas 좌표 bbox 계산
+      // + textColor 추출 (style.color 또는 operator list)
       let textBoxes = [];
+      const styles = {};
       try {
-        const tc = await page.getTextContent();
-        // pdfjs textContent.items: { str, transform: [a,b,c,d,e,f], width, height }
-        // transform e,f 가 baseline 위치 (PDF 좌표). 이를 viewport 변환.
+        const tc = await page.getTextContent({ includeMarkedContent: false });
+        // pdfjs textContent.styles 는 fontFamily 만, color 는 별도 추출 필요
         for (const it of (tc.items || [])) {
           if (!it.str || !it.str.trim()) continue;
           const tx = pdfjs.Util.transform(viewport.transform, it.transform);
-          // tx = [a,b,c,d,e,f] — text baseline at (e, f) in canvas px
-          const fontHeight = Math.hypot(tx[2], tx[3]); // 글자 높이 (canvas px)
+          const fontHeight = Math.hypot(tx[2], tx[3]);
           const itemW = it.width * Math.hypot(viewport.transform[0], viewport.transform[1]);
-          // baseline 기준이라 위로 fontHeight 확장
           const cx = tx[4];
           const cy = tx[5] - fontHeight;
           textBoxes.push({
             str: it.str,
             x: cx, y: cy,
             w: itemW || (it.str.length * fontHeight * 0.5),
-            h: fontHeight * 1.15, // 약간 여유
+            h: fontHeight * 1.15,
+            fontName: it.fontName || null,
           });
         }
       } catch (_e) {}
+
+      // 🎯 표 테두리 추출 — getOperatorList 의 rect/line 명령 분석
+      // PDF.js OPS: 41=rectangle, 42=lineWidth, fill/stroke 등
+      let lineRects = [];     // 가로/세로 선 (x, y, w, h)
+      let fillRects = [];     // 채워진 사각형 (셀 배경)
+      let textColors = [];    // 텍스트 색상 정보 (operator stream 에서 추출)
+      try {
+        const opList = await page.getOperatorList();
+        const ops = pdfjs.OPS;
+        // CTM (현재 변환 행렬) 추적
+        const ctmStack = [[1,0,0,1,0,0]];
+        let curFillRGB = [0,0,0];
+        let curStrokeRGB = [0,0,0];
+        // 사각형 path 누적 (rectangle op 으로 축적된 것)
+        let pendingRects = [];
+        function applyTransform(m, x, y) {
+          return [m[0]*x + m[2]*y + m[4], m[1]*x + m[3]*y + m[5]];
+        }
+        function getCTM() { return ctmStack[ctmStack.length - 1]; }
+        function multiplyMatrix(a, b) {
+          return [
+            a[0]*b[0] + a[2]*b[1],
+            a[1]*b[0] + a[3]*b[1],
+            a[0]*b[2] + a[2]*b[3],
+            a[1]*b[2] + a[3]*b[3],
+            a[0]*b[4] + a[2]*b[5] + a[4],
+            a[1]*b[4] + a[3]*b[5] + a[5],
+          ];
+        }
+        for (let k = 0; k < opList.fnArray.length; k++) {
+          const fn = opList.fnArray[k];
+          const args = opList.argsArray[k];
+          if (fn === ops.save) {
+            ctmStack.push(getCTM().slice());
+          } else if (fn === ops.restore) {
+            if (ctmStack.length > 1) ctmStack.pop();
+          } else if (fn === ops.transform) {
+            // args: [a,b,c,d,e,f]
+            ctmStack[ctmStack.length - 1] = multiplyMatrix(getCTM(), args);
+          } else if (fn === ops.setFillRGBColor) {
+            curFillRGB = [Math.round(args[0]*255), Math.round(args[1]*255), Math.round(args[2]*255)];
+          } else if (fn === ops.setStrokeRGBColor) {
+            curStrokeRGB = [Math.round(args[0]*255), Math.round(args[1]*255), Math.round(args[2]*255)];
+          } else if (fn === ops.setFillGray) {
+            const v = Math.round(args[0]*255);
+            curFillRGB = [v, v, v];
+          } else if (fn === ops.setStrokeGray) {
+            const v = Math.round(args[0]*255);
+            curStrokeRGB = [v, v, v];
+          } else if (fn === ops.rectangle) {
+            // args: [x, y, w, h] in PDF user space
+            const [px, py, pw, ph] = args;
+            const m = getCTM();
+            // 4 corner transform
+            const c1 = applyTransform(m, px, py);
+            const c2 = applyTransform(m, px + pw, py + ph);
+            // viewport 변환: PDF coord → canvas coord
+            const vT = viewport.transform;
+            const v1 = applyTransform(vT, c1[0], c1[1]);
+            const v2 = applyTransform(vT, c2[0], c2[1]);
+            const cx0 = Math.min(v1[0], v2[0]);
+            const cy0 = Math.min(v1[1], v2[1]);
+            const cw = Math.abs(v2[0] - v1[0]);
+            const ch = Math.abs(v2[1] - v1[1]);
+            pendingRects.push({ x: cx0, y: cy0, w: cw, h: ch });
+          } else if (fn === ops.fill || fn === ops.eoFill) {
+            // 채우기 — fillRects 에 (셀 배경)
+            for (const r of pendingRects) {
+              if (r.w > 5 && r.h > 5) fillRects.push({ ...r, color: curFillRGB.slice() });
+            }
+            pendingRects = [];
+          } else if (fn === ops.stroke || fn === ops.closeStroke) {
+            // 선 — lineRects 에 (테두리)
+            for (const r of pendingRects) {
+              lineRects.push({ ...r, color: curStrokeRGB.slice() });
+            }
+            pendingRects = [];
+          } else if (fn === ops.fillStroke || fn === ops.eoFillStroke || fn === ops.closeFillStroke || fn === ops.closeEOFillStroke) {
+            for (const r of pendingRects) {
+              if (r.w > 5 && r.h > 5) fillRects.push({ ...r, color: curFillRGB.slice() });
+              lineRects.push({ ...r, color: curStrokeRGB.slice() });
+            }
+            pendingRects = [];
+          } else if (fn === ops.endPath) {
+            pendingRects = [];
+          } else if (fn === ops.showText || fn === ops.showSpacedText) {
+            // 텍스트 그리기 시점의 fill 색 = 텍스트 색
+            // CTM 의 e,f 가 텍스트 위치 → 가까운 textBox 매칭
+            const m = getCTM();
+            const v = applyTransform(viewport.transform, m[4], m[5]);
+            textColors.push({ x: v[0], y: v[1], color: curFillRGB.slice() });
+          }
+        }
+      } catch (e) { console.warn('getOperatorList 실패:', e.message); }
+
+      // textBox 마다 가장 가까운 textColor 매칭
+      for (const tb of textBoxes) {
+        let best = null, bestD = 1e9;
+        const tcx = tb.x + tb.w/2, tcy = tb.y + tb.h*0.7;
+        for (const tc of textColors) {
+          const d = Math.abs(tc.x - tcx) + Math.abs(tc.y - tcy);
+          if (d < bestD) { bestD = d; best = tc; }
+        }
+        tb.color = (best && bestD < 50) ? best.color : [0, 0, 0];
+      }
 
       const pageState = {
         pageIndex: i - 1,
@@ -1702,6 +1807,8 @@ async function mountPdf(file) {
         pdfPageWidth, pdfPageHeight,
         edits: [],
         textBoxes,
+        lineRects,    // 표 테두리 (stroke 된 사각형)
+        fillRects,    // 셀 배경색 (fill 된 사각형)
       };
       pdfState.pages.push(pageState);
       attachPageInteractions(pageState);
@@ -3659,19 +3766,58 @@ async function exportPdfAsIdenticalDocx() {
               const w = next - c;
               return Math.max(800, Math.round(w * 20 / pg.scale)); // canvas px → twips
             });
-            const tblRows = tg.rows.map(rowIdx => {
+            // 셀 배경색 매칭 헬퍼: 주어진 (x, y, w, h) 영역과 가장 일치하는 fillRect 찾기
+            function findCellFill(cellX, cellY, cellW, cellH) {
+              const fills = pg.fillRects || [];
+              const cx = cellX + cellW/2, cy = cellY + cellH/2;
+              for (const f of fills) {
+                if (cx >= f.x && cx <= f.x + f.w && cy >= f.y && cy <= f.y + f.h) {
+                  // 흰색(255,255,255) 은 배경 X
+                  const [r,g,b] = f.color;
+                  if (r >= 248 && g >= 248 && b >= 248) continue;
+                  return f.color;
+                }
+              }
+              return null;
+            }
+            // hex 색 변환
+            function rgb2hex(rgb) {
+              return rgb.map(v => v.toString(16).padStart(2, '0')).join('').toUpperCase();
+            }
+            const tblRows = tg.rows.map((rowIdx, rIdx) => {
               const row = rows[rowIdx];
+              const rowYTop = row.y - 1;
+              const rowYBot = (rows[rowIdx+1] ? rows[rowIdx+1].y : row.y + row.h*1.5) - 1;
               const cells = tg.cols.map((cx, k) => {
                 const cxNext = tg.cols[k + 1] || cx + 99999;
-                // 이 셀에 들어갈 chunk: chunk 시작 x 가 [cx-15, cxNext-15) 안
+                const cellW = cxNext - cx;
+                const cellH = rowYBot - rowYTop;
+                // 이 셀에 들어갈 chunk
                 const chunks = (row.chunks || []).filter(c => c.x >= cx - 15 && c.x < cxNext - 15);
                 const text = chunks.map(c => c.str).join(' ').trim();
-                return new docxLib.TableCell({
+                // 텍스트 색상 — chunk 의 첫 item 의 color
+                const textColor = (chunks.length > 0 && chunks[0].items && chunks[0].items[0] && chunks[0].items[0].color)
+                  ? chunks[0].items[0].color : [0, 0, 0];
+                // 셀 배경색 — fillRect 매칭
+                const cellFill = findCellFill(cx, rowYTop, cellW, cellH);
+                const cellOpts = {
                   width: { size: cellWidthsTwips[k], type: docxLib.WidthType.DXA },
                   children: [new docxLib.Paragraph({
-                    children: [new docxLib.TextRun({ text, size: 20 })],
+                    children: [new docxLib.TextRun({
+                      text,
+                      size: 20,
+                      color: rgb2hex(textColor),
+                    })],
                   })],
-                });
+                };
+                if (cellFill) {
+                  cellOpts.shading = {
+                    type: docxLib.ShadingType.CLEAR,
+                    color: 'auto',
+                    fill: rgb2hex(cellFill),
+                  };
+                }
+                return new docxLib.TableCell(cellOpts);
               });
               return new docxLib.TableRow({ children: cells });
             });
