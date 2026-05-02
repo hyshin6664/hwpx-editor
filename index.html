@@ -3813,11 +3813,15 @@ async function exportPdfAsIdenticalDocx(opts) {
           const tg = tableGroups[inTableGroupIdx];
           if (tg && tg.rows[0] === r) {
             // 표 만들기
-            const cellWidthsTwips = tg.cols.map((c, k) => {
-              const next = tg.cols[k + 1] || pg.pdfPageWidth * (pg.canvas.width / (pg.pdfPageWidth * pg.scale));
-              const w = next - c;
-              return Math.max(800, Math.round(w * 20 / pg.scale)); // canvas px → twips
+            // 셀 너비 — PDF 의 컬럼 비율 유지 + 페이지 사용 가능 폭(여백 제외)에 맞춰 스케일
+            // 페이지 가용 폭 = pdfPageWidth(pt) - 좌우 여백(72pt 기본) → twips
+            const usableTwips = Math.max(8000, Math.round((pg.pdfPageWidth - 144) * 20));
+            const rawWidths = tg.cols.map((c, k) => {
+              const next = tg.cols[k + 1] || (pg.canvas.width); // 마지막 컬럼은 페이지 끝까지
+              return Math.max(50, next - c); // canvas px
             });
+            const sumRaw = rawWidths.reduce((a, b) => a + b, 0);
+            const cellWidthsTwips = rawWidths.map(w => Math.max(700, Math.round(w / sumRaw * usableTwips)));
             // 셀 배경색 매칭 헬퍼: 주어진 (x, y, w, h) 영역과 가장 일치하는 fillRect 찾기
             function findCellFill(cellX, cellY, cellW, cellH) {
               const fills = pg.fillRects || [];
