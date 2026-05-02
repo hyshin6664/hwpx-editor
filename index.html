@@ -1951,7 +1951,7 @@ function attachPageInteractions(pg) {
         textErases.push({ ...pc, color: tcolor });
       }
       ctx.restore();
-      const edit = { type: 'erase-text', boxes: textErases, _displayPx: { hits, x, y, w, h } };
+      const edit = { type: 'erase-text', boxes: textErases, _displayPx: { intersections, x, y, w, h } };
       pg.edits.push(edit);
       pdfState.undoStack.push({ pageIdx: pg.pageIndex, edit, snapshot });
       pdfState.redoStack = [];

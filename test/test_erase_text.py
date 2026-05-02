@@ -72,23 +72,65 @@ def main():
         canvas_h = page.evaluate("() => document.querySelector('#pdfHost canvas').height")
         scale_x = cb['width'] / canvas_w
         scale_y = cb['height'] / canvas_h
-        # 첫 textBox 의 좌측 절반 드래그
-        if first:
-            sx = cb['x'] + first['x'] * scale_x
-            sy = cb['y'] + first['y'] * scale_y
-            ex = cb['x'] + (first['x'] + first['w']/2) * scale_x  # 절반만
-            ey = cb['y'] + (first['y'] + first['h']) * scale_y
-            page.mouse.move(sx, sy)
-            page.mouse.down()
-            page.mouse.move(ex, ey, steps=10)
-            page.mouse.up()
-            page.wait_for_timeout(500)
+        # 화면에 보이는 textBox 하나 찾기 (드래그 가능한 위치)
+        # canvas 의 가시 영역(viewport intersection)을 알아야 함 — page.evaluate 로 canvas 의 boundingClientRect 가시 영역 확인
+        visible = page.evaluate("""() => {
+          const c = document.querySelector('#pdfHost canvas');
+          const r = c.getBoundingClientRect();
+          const vis_top = Math.max(0, -r.top);  // canvas 좌표계의 보이는 시작 y (px)
+          const vis_bot = Math.min(c.height, (innerHeight - r.top) * (c.height / r.height));
+          // 보이는 영역 안에 있는 첫 textBox
+          const tbs = window.__pdfState.pages[0].textBoxes;
+          for (const tb of tbs) {
+            if (tb.y >= vis_top + 30 && tb.y + tb.h <= vis_bot - 30 && tb.w > 20) {
+              return { tb, vis_top, vis_bot, canvasH: c.height, rTop: r.top };
+            }
+          }
+          return { tb: tbs[0], vis_top, vis_bot, canvasH: c.height, rTop: r.top };
+        }""")
+        target = visible['tb']
+        print(f"DEBUG: visible 정보 = {visible}")
+        print(f"DEBUG: 타겟 텍스트박스 = {target}")
+        # 드래그 좌표: canvas 의 boundingClientRect.top + (tb.y / canvas.height) * rect.height
+        # 더 정확히: canvas px → screen px = (px / canvas.height) * rect.height + rect.top
+        cb2 = page.evaluate("() => { const r = document.querySelector('#pdfHost canvas').getBoundingClientRect(); return {x:r.x, y:r.y, w:r.width, h:r.height}; }")
+        sx = cb2['x'] + (target['x']) * (cb2['w'] / canvas_w)
+        sy = cb2['y'] + (target['y']) * (cb2['h'] / canvas_h)
+        ex = cb2['x'] + (target['x'] + target['w']/2) * (cb2['w'] / canvas_w)  # 절반만
+        ey = cb2['y'] + (target['y'] + target['h']) * (cb2['h'] / canvas_h)
+        print(f"DEBUG: drag {sx:.0f},{sy:.0f} → {ex:.0f},{ey:.0f}")
+        # 페이지 안의 overlay 에 직접 이벤트 dispatch
+        page.evaluate(f"""(args) => {{
+          const ovs = document.querySelectorAll('#pdfHost .pdf-overlay');
+          if (ovs.length === 0) return null;
+          const ov = ovs[0];
+          const fire = (type, x, y) => {{
+            ov.dispatchEvent(new MouseEvent(type, {{bubbles:true, clientX:x, clientY:y, button:0, view:window}}));
+          }};
+          fire('mousedown', {sx}, {sy});
+          fire('mousemove', ({sx}+{ex})/2, ({sy}+{ey})/2);
+          fire('mousemove', {ex}, {ey});
+          fire('mouseup', {ex}, {ey});
+        }}""", {})
+        page.wait_for_timeout(500)
 
         edits = page.evaluate("() => window.__pdfState.pages[0].edits.length")
         step("erase-text edit 추가", edits > 0, f"{edits}개 edit")
+        # 디버그: 어떤 단계에서 멈췄는지 트레이스
+        debug = page.evaluate("""() => {
+          return {
+            tool: window.__pdfState.tool,
+            allEdits: window.__pdfState.pages.map(p => p.edits.length),
+            textBoxes_first3: window.__pdfState.pages[0].textBoxes.slice(0, 3),
+          };
+        }""")
+        print("DEBUG state:", debug)
+        # 콘솔 로그에서 erase 관련 메시지 추출
+        print("Console logs (마지막 10):")
+        for m in msgs[-10:]: print(" ", m)
 
         edit_info = page.evaluate("""() => { const e = window.__pdfState.pages[0].edits.find(e => e.type==='erase-text');
-          return e ? { boxes: e.boxes.length, hits: e._displayPx.hits.length } : null; }""")
+          return e ? { boxes: e.boxes.length, intersections: e._displayPx.intersections.length } : null; }""")
         step("edit 구조", edit_info and edit_info.get('boxes', 0) > 0, str(edit_info))
 
         # 저장
