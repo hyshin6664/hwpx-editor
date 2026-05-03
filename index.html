@@ -2633,7 +2633,7 @@ async function mountDocx(file) {
     if (typeof renderAsync !== 'function') throw new Error("docx-preview renderAsync 못 찾음");
 
     const wrap = document.createElement('div');
-    wrap.style.cssText = 'max-width:820px;margin:0 auto;background:#fff;box-shadow:0 2px 12px rgba(0,0,0,.3);';
+    wrap.style.cssText = 'max-width:none;margin:0 auto;background:#fff;box-shadow:0 2px 12px rgba(0,0,0,.3);width:fit-content;';
     docxHost.appendChild(wrap);
     const styleHost = document.createElement('div');
     docxHost.appendChild(styleHost);
