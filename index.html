@@ -3822,6 +3822,34 @@ async function exportPdfAsIdenticalDocx(opts) {
         } else { i++; }
       }
 
+      // 2.5) 컬럼이 결정된 후, 각 행의 chunks 가 컬럼 boundary 를 가로지르면 강제 분리
+      // (e.g., "08:00이후 1005-800-967219" 가 이체시간/출금계좌 두 컬럼에 걸쳐있으면 분리)
+      for (const tg of tableGroups) {
+        for (const rIdx of tg.rows) {
+          const row = rows[rIdx];
+          if (!row.items) continue;
+          const newChunks = [];
+          for (const c of (row.chunks || [])) {
+            // chunk 안에 어떤 컬럼 시작점이 있는지
+            const splitPoints = tg.cols.filter(cx => cx > c.x + 5 && cx < c.endX - 5);
+            if (splitPoints.length === 0) { newChunks.push(c); continue; }
+            // chunk 의 items 를 splitPoints 기준으로 분리
+            const allBounds = [c.x, ...splitPoints, c.endX + 1].sort((a,b)=>a-b);
+            for (let s = 0; s < allBounds.length - 1; s++) {
+              const segItems = (c.items || []).filter(it => it.x >= allBounds[s] && it.x < allBounds[s+1]);
+              if (segItems.length === 0) continue;
+              newChunks.push({
+                x: segItems[0].x,
+                endX: segItems[segItems.length-1].x + segItems[segItems.length-1].w,
+                str: segItems.map(it => it.str).join(''),
+                items: segItems,
+              });
+            }
+          }
+          row.chunks = newChunks;
+        }
+      }
+
       // 3) 본문 children 빌드
       const children = [];
       const tableRowsSet = new Set();
@@ -3947,12 +3975,28 @@ async function exportPdfAsIdenticalDocx(opts) {
         children.push(new docxLib.Paragraph({ children: [new docxLib.TextRun({ text: '(빈 페이지)' })] }));
       }
       // 페이지 크기 = PDF 와 동일
-      const widthTwips = Math.max(2880, Math.round(pg.pdfPageWidth * 20));
-      const heightTwips = Math.max(2880, Math.round(pg.pdfPageHeight * 20));
+      // 페이지 사이즈 — 표 전체 너비가 portrait A4 가용 폭(8226 twips) 초과 시 landscape 자동
+      let widthTwips = Math.max(2880, Math.round(pg.pdfPageWidth * 20));
+      let heightTwips = Math.max(2880, Math.round(pg.pdfPageHeight * 20));
+      // 이 페이지의 모든 표 너비 중 최대값
+      let maxTblWidth = 0;
+      for (const ch of children) {
+        if (ch && ch.options && ch.options.width && ch.options.width.size) {
+          if (ch.options.width.size > maxTblWidth) maxTblWidth = ch.options.width.size;
+        }
+      }
+      const portraitMargins = 720 * 2; // 좌우 마진 합
+      const portraitUsable = widthTwips - portraitMargins;
+      let useLandscape = false;
+      if (maxTblWidth > portraitUsable) {
+        // landscape 로 전환 — 가로/세로 swap
+        const tmp = widthTwips; widthTwips = heightTwips; heightTwips = tmp;
+        useLandscape = true;
+      }
       sections.push({
         properties: {
           page: {
-            size: { width: widthTwips, height: heightTwips },
+            size: { width: widthTwips, height: heightTwips, orientation: useLandscape ? 'landscape' : 'portrait' },
             margin: { top: 720, right: 720, bottom: 720, left: 720 },
           },
         },
