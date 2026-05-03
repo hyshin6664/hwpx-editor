@@ -4986,24 +4986,17 @@ function fitDocxToViewport() {
     }
   };
 
-  if (window.innerWidth <= 720) { // 모바일 + 작은 태블릿
-    reset();
-    const containerW = host.clientWidth - 8;
-    if (naturalW > containerW) {
-      const scale = containerW / naturalW;
-      // 1) transform 적용 전 자연 높이 측정 (정확)
-      scaleTarget.style.width = naturalW + 'px';
-      const naturalH = scaleTarget.scrollHeight;
-      // 2) 자식 transform → 시각상 작아지나 컨테이너 height 자동
-      scaleTarget.style.transformOrigin = 'top left';
-      scaleTarget.style.transform = `scale(${scale})`;
-      // 3) 컨테이너 height 명시 — scrollable 정상 (스크롤 끝까지 가능)
-      scaleTarget.style.height = (naturalH * scale) + 'px';
-      // 4) 내부 page-break 같은 빈 공간 줄이기 — 자식 전체 시각 height 정확히 차지
-      scaleTarget.style.overflow = 'visible';
-    }
-  } else {
-    reset();
+  // 모바일·데스크톱 공통 — host 폭보다 페이지가 크면 자동 축소 (모든 컬럼 보이게)
+  reset();
+  const containerW = host.clientWidth - 8;
+  if (naturalW > containerW) {
+    const scale = containerW / naturalW;
+    scaleTarget.style.width = naturalW + 'px';
+    const naturalH = scaleTarget.scrollHeight;
+    scaleTarget.style.transformOrigin = 'top left';
+    scaleTarget.style.transform = `scale(${scale})`;
+    scaleTarget.style.height = (naturalH * scale) + 'px';
+    scaleTarget.style.overflow = 'visible';
   }
 }
 let _resizeTimer = null;
