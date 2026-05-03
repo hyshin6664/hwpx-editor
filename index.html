@@ -693,6 +693,11 @@
     /* DOCX 태블릿/큰 폰: 좌우 스크롤 */
     #docxHost { overflow-x: auto !important; padding: 12px 8px; }
     #docxHost .docx { transform-origin: top left; }
+    /* docx-preview 의 자체 max-width 제거 — landscape 페이지 잘림 방지 */
+    #docxHost { overflow-x: auto; }
+    #docxHost .docx, #docxHost .docx-wrapper, #docxHost section {
+      max-width: none !important;
+    }
   }
   @media (max-width: 480px) {
     /* 작은 폰: scale 적용 (JS 가 동적 계산), 좌우 스크롤 X */
