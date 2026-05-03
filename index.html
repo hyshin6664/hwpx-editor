@@ -3897,9 +3897,17 @@ async function exportPdfAsIdenticalDocx(opts) {
               pgNeedsLandscape = true;
               usable = landscapeUsable;
             }
-            if (cellWidthsTwips.reduce((a, b) => a + b, 0) > usable) {
-              const ratio = usable / cellWidthsTwips.reduce((a, b) => a + b, 0);
-              cellWidthsTwips = cellWidthsTwips.map(w => Math.max(700, Math.round(w * ratio)));
+            const sumNow = cellWidthsTwips.reduce((a, b) => a + b, 0);
+            if (sumNow > usable) {
+              const ratio = usable / sumNow;
+              // 비례 축소 — 최소 350 twips (한 글자 들어갈 정도). 합이 usable 안 넘게.
+              cellWidthsTwips = cellWidthsTwips.map(w => Math.max(350, Math.round(w * ratio)));
+              // 그래도 합이 초과면 균등 축소 (최소 위반)
+              const checkSum = cellWidthsTwips.reduce((a, b) => a + b, 0);
+              if (checkSum > usable) {
+                const r2 = usable / checkSum;
+                cellWidthsTwips = cellWidthsTwips.map(w => Math.round(w * r2));
+              }
             }
             // 셀 배경색 매칭 헬퍼: 주어진 (x, y, w, h) 영역과 가장 일치하는 fillRect 찾기
             function findCellFill(cellX, cellY, cellW, cellH) {
@@ -3994,17 +4002,22 @@ async function exportPdfAsIdenticalDocx(opts) {
         children.push(new docxLib.Paragraph({ children: [new docxLib.TextRun({ text: '(빈 페이지)' })] }));
       }
       // 페이지 크기 = PDF 와 동일
-      // 페이지 사이즈 — pgNeedsLandscape 가 children 빌드 시 결정됨
-      let widthTwips = Math.max(2880, Math.round(pg.pdfPageWidth * 20));
-      let heightTwips = Math.max(2880, Math.round(pg.pdfPageHeight * 20));
-      let useLandscape = pgNeedsLandscape;
-      if (useLandscape) {
-        const tmp = widthTwips; widthTwips = heightTwips; heightTwips = tmp;
+      // 페이지 사이즈 — landscape 시 width/height 직접 swap (orientation 명시는 docx 가 다시 swap 해서 무효)
+      const portraitW = Math.max(2880, Math.round(pg.pdfPageWidth * 20));
+      const portraitH = Math.max(2880, Math.round(pg.pdfPageHeight * 20));
+      let widthTwips, heightTwips;
+      if (pgNeedsLandscape) {
+        widthTwips = portraitH;  // 가로 = 원래 세로 길이
+        heightTwips = portraitW;
+      } else {
+        widthTwips = portraitW;
+        heightTwips = portraitH;
       }
       sections.push({
         properties: {
           page: {
-            size: { width: widthTwips, height: heightTwips, orientation: useLandscape ? 'landscape' : 'portrait' },
+            // orientation 안 명시 — width/height 직접 swap 만으로 효과 구현
+            size: { width: widthTwips, height: heightTwips },
             margin: { top: 720, right: 720, bottom: 720, left: 720 },
           },
         },
