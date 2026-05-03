@@ -4958,11 +4958,8 @@ function fitDocxToViewport() {
   if (!host) return;
   const sections = host.querySelectorAll('section');
   if (sections.length === 0) return;
-  // scale 대상: 모든 sections 의 가장 위 부모(docx-wrapper) 또는 .docx 클래스
-  let scaleTarget = sections[0].parentElement;
-  // 만약 wrap (max-width:820px 인 우리 div) 이 부모라면 그 안의 wrapper 를 찾기
-  // 가장 안전: section 자체에 transform 적용
-  if (sections.length === 1) scaleTarget = sections[0];
+  // scale 대상: section 의 부모(docx-wrapper) — 부모에 transform 만 줘서 forceA4 width 보존
+  const scaleTarget = sections[0].parentElement;
   // 측정: 가장 넓은 section (큰 표 들어갔을 수 있음)
   let naturalW = 0;
   sections.forEach(s => { if (s.offsetWidth > naturalW) naturalW = s.offsetWidth; });
