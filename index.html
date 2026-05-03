@@ -3963,10 +3963,6 @@ async function exportPdfAsIdenticalDocx(opts) {
             });
             // 표 전체 너비 합계 (twips) — 페이지가 충분히 넓어야 함
             const totalTblTwips = cellWidthsTwips.reduce((a, b) => a + b, 0);
-            if (totalTblTwips > pgMaxTblWidth) pgMaxTblWidth = totalTblTwips;
-            // 후 rescale 용
-            const tblInfo = { widths: cellWidthsTwips };
-            pgTablesForRescale.push(tblInfo);
             children.push(new docxLib.Table({
               rows: tblRows,
               width: { size: totalTblTwips, type: docxLib.WidthType.DXA },
