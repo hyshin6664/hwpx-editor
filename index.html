@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v22.42<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v22.43<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -890,7 +890,7 @@
         <button class="save-item" data-fmt="hwp"  style="display:block;width:100%;text-align:left;padding:9px 14px;border:none;background:transparent;cursor:pointer;font:inherit;color:var(--text)">💾 .hwp (구한글)</button>
         <button class="save-item" data-fmt="docx" style="display:block;width:100%;text-align:left;padding:9px 14px;border:none;background:transparent;cursor:pointer;font:inherit;color:var(--text)">💾 .docx (워드)</button>
         <button class="save-item" data-fmt="pdf"  style="display:block;width:100%;text-align:left;padding:9px 14px;border:none;background:transparent;cursor:pointer;font:inherit;color:var(--text)">📄 .pdf (PDF)</button>
-        <button class="save-item" data-fmt="xlsx" style="display:block;width:100%;text-align:left;padding:9px 14px;border:none;background:transparent;cursor:pointer;font:inherit;color:var(--text);border-top:1px solid var(--border)">📊 .xlsx (엑셀 그리드 - 시각 정확)</button>
+        <button class="save-item" data-fmt="xlsx" style="display:block;width:100%;text-align:left;padding:9px 14px;border:none;background:transparent;cursor:pointer;font:inherit;color:var(--text);border-top:1px solid var(--border)">📊 .xlsx (엑셀 - 표 편집용)</button>
         <button class="save-item" data-fmt="gsheet" style="display:block;width:100%;text-align:left;padding:9px 14px;border:none;background:transparent;cursor:pointer;font:inherit;color:var(--text)">📈 구글 시트로 (복사 + 시트 열기)</button>
       </div>
     </div>
@@ -3471,6 +3471,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v22.43", date: "2026-05-04", desc: "📊 엑셀 그리드 방식 폐기 → 사용자 편집 친화 방식으로 회복. 1pt 미세 셀 200칸은 인쇄 시 시각 정확하지만 화면 편집 불가능했음. 워드와 동일한 표 추출 로직(행/컬럼 클러스터링) + A4 fit-to-page + wrapText 적용 — 사용자가 셀 단위로 직접 편집 가능. 워드(.docx)는 그대로 유지" },
   { version: "v22.42", date: "2026-05-04", desc: "📊 엑셀 그리드 방식 (사용자 제안) — 셀 가로 200칸 × 세로 1pt 미세 격자에 PDF 의 textBox/lineRect/fillRect 좌표를 정확하게 배치 + A4 fit-to-page. 워드 표 모델보다 시각 정확도 ↑ (32번 자동 측정 평균 16.26%, 워드 16.54%). · 워드(.docx) 와 엑셀(.xlsx 그리드) 둘 다 메뉴에서 선택 — 단순 표는 워드, 복잡 양식은 엑셀 그리드" },
   { version: "v22.1", date: "2026-05-03", desc: "📐 PDF→Word 표 잘림 완전 해결 — landscape 페이지 width/height 직접 swap (orientation 명시 X — docx 라이브러리가 다시 swap 하던 버그 우회) · 큰 표(21컬럼·39행 등) 비례 축소 강화 (최소 350 twips, 균등 축소) · docx-preview wrap CSS 개선 (max-width:none, display:inline-block) · fitDocxToViewport 데스크톱 분기 추가 — host 폭 < 페이지 폭 시 자동 transform scale, 모든 컬럼 보임 · section/wrapper max-width:none !important 강제 · containerW 마진 48px (페이지 box-shadow 여백). 결과: 첫 페이지 큰 표가 host 안에 자동 fit, 우측 잘림 없음" },
   { version: "v22.0", date: "2026-05-03", desc: "📊 PDF → 엑셀(.xlsx) + 📈 구글 스프레드시트 추가 (사용자 제안) — 표 PDF 는 워드보다 엑셀이 자연스러움. ExcelJS(MIT) 사용, 셀 색·테두리·헤더 굵게 자동 적용. 컬럼 너비 자동 조정. · 구글 시트는 TSV 클립보드 복사 → sheets.new 새 탭 열림 → Ctrl+V 로 즉시. · 컬럼 분리 정확도 개선: 세로선이 chunk 사이를 가로지르면 강제 분리 (이체시간/출금계좌 합쳐지던 문제 보완)" },
@@ -4051,14 +4052,14 @@ async function exportPdfAsIdenticalDocx(opts) {
 }
 
 // 📊 PDF → Excel (.xlsx) — 표 PDF 면 워드보다 훨씬 자연. ExcelJS 사용 (MIT)
-// 📊 PDF → Excel 그리드 방식 (시각 정확)
-// 작은 셀 격자에 PDF textBoxes/lineRects/fillRects 를 정확한 좌표로 배치 → A4 fit-to-page
+// 📊 PDF → Excel — 사용자 편집 친화 (각 표를 자연스러운 셀 단위)
+// 그리드 방식은 화면 편집 불가능해서 폐기. 단순 표 추출 방식 (워드와 동일 로직).
 async function exportPdfAsXlsx() {
   if (currentMode !== 'pdf' || !pdfState || !pdfState.pages || pdfState.pages.length === 0) {
     alert('PDF 모드에서만 가능합니다');
     return;
   }
-  showLoading('PDF → 엑셀(그리드) 변환 중…', '미세 셀 격자 생성');
+  showLoading('PDF → 엑셀 변환 중…', '표 구조 분석');
   try {
     if (!window.ExcelJS) {
       await new Promise((resolve, reject) => {
@@ -4071,134 +4072,109 @@ async function exportPdfAsXlsx() {
     const wb = new window.ExcelJS.Workbook();
     wb.creator = 'Solbox Docs';
     wb.created = new Date();
-
-    // 그리드 해상도 — 가로 200칸 (A4 595pt → 셀당 ~3pt), 세로 행 1pt
-    const GRID_W = 200;
-    const ROW_H_PT = 1;
-
-    let totalCells = 0;
+    let totalRows = 0;
     for (let pi = 0; pi < pdfState.pages.length; pi++) {
       const pg = pdfState.pages[pi];
-      showLoading('PDF → 엑셀(그리드) 변환 중…', `페이지 ${pi+1} / ${pdfState.pages.length}`);
-      const tbs = (pg.textBoxes || []);
+      const tbs = (pg.textBoxes || []).slice();
       if (tbs.length === 0) continue;
-
       const ws = wb.addWorksheet(`Page ${pi + 1}`);
-      const canvasW = pg.canvas.width;
-      const cellCanvasW = canvasW / GRID_W; // canvas px / cell
-      const rowsPerPage = Math.floor(pg.pdfPageHeight / ROW_H_PT);
-
-      // 컬럼 너비 — Excel char 단위 (1 char ≈ 5.25pt)
-      const colWidthChars = (cellCanvasW / pg.scale) / 5.25;
-      const cols = [];
-      for (let c = 0; c < GRID_W; c++) cols.push({ width: colWidthChars });
-      ws.columns = cols;
-
-      // 행 높이 — pt 단위 (excel default rowHeight 단위)
-      // performance: 모든 행 명시 X. 실제 사용 행만.
-      const usedRows = new Set();
-
-      // 텍스트 배치
-      const used = new Set();
-      const sorted = [...tbs].sort((a, b) => (a.y - b.y) || (a.x - b.x));
-      for (const tb of sorted) {
-        let col = Math.floor(tb.x / cellCanvasW) + 1;
-        const row = Math.floor(tb.y / (ROW_H_PT * pg.scale)) + 1;
-        if (col < 1 || col > GRID_W || row < 1 || row > rowsPerPage) continue;
-        const colSpan = Math.max(1, Math.floor(tb.w / cellCanvasW));
-        let endCol = Math.min(GRID_W, col + colSpan - 1);
-        while (col <= GRID_W && used.has(row + ',' + col)) col++;
-        if (col > GRID_W) continue;
-        try {
-          const cell = ws.getCell(row, col);
-          cell.value = tb.str;
-          cell.font = { name: '맑은 고딕', size: 7,
-            color: tb.color ? { argb: 'FF' + tb.color.map(v => v.toString(16).padStart(2,'0')).join('').toUpperCase() } : undefined };
-          cell.alignment = { horizontal: 'left', vertical: 'middle', wrapText: false };
-          let endSafe = endCol;
-          while (endSafe > col && used.has(row + ',' + endSafe)) endSafe--;
-          if (endSafe > col) {
-            try {
-              ws.mergeCells(row, col, row, endSafe);
-              for (let c = col; c <= endSafe; c++) used.add(row + ',' + c);
-            } catch(_) { used.add(row + ',' + col); }
-          } else used.add(row + ',' + col);
-          usedRows.add(row);
-          totalCells++;
-        } catch(_){}
+      // textBox → 행/컬럼 클러스터링 (워드 변환과 동일 로직)
+      tbs.sort((a, b) => a.y - b.y || a.x - b.x);
+      const rows = [];
+      const rowTol = 5;
+      for (const tb of tbs) {
+        const last = rows[rows.length - 1];
+        if (last && Math.abs(tb.y - last.y) <= rowTol) { last.items.push(tb); last.h = Math.max(last.h, tb.h); }
+        else rows.push({ y: tb.y, h: tb.h, items: [tb] });
       }
-
-      // 표 테두리 — lineRects 의 가는 사각형
-      function safeBorder(r, c, type, side) {
-        if (r < 1 || c < 1 || r > rowsPerPage || c > GRID_W) return;
-        try {
-          const cell = ws.getCell(r, c);
-          const old = cell.border || {};
-          cell.border = Object.assign({}, old, { [side]: { style: type, color: { argb: 'FF888888' } } });
-        } catch(_){}
-      }
-      for (const lr of (pg.lineRects || [])) {
-        const x = lr.x, y = lr.y, w = lr.w, h = lr.h;
-        if (w < 4 && h > 20) {
-          // 세로선
-          const col = Math.floor(x / cellCanvasW) + 1;
-          const r1 = Math.max(1, Math.floor(y / (ROW_H_PT * pg.scale)) + 1);
-          const r2 = Math.min(rowsPerPage, Math.floor((y + h) / (ROW_H_PT * pg.scale)) + 1);
-          for (let r = r1; r <= r2; r++) safeBorder(r, col, 'thin', 'left');
-        } else if (h < 4 && w > 20) {
-          const row = Math.floor(y / (ROW_H_PT * pg.scale)) + 1;
-          const c1 = Math.max(1, Math.floor(x / cellCanvasW) + 1);
-          const c2 = Math.min(GRID_W, Math.floor((x + w) / cellCanvasW) + 1);
-          for (let c = c1; c <= c2; c++) safeBorder(row, c, 'thin', 'top');
+      const vLines = (pg.lineRects || []).filter(lr => lr.w < 4 && lr.h > 30).map(lr => lr.x).sort((a, b) => a - b);
+      rows.forEach(row => {
+        row.items.sort((a, b) => a.x - b.x);
+        const chunks = [];
+        let cur = null;
+        const gapThr = Math.max(4, row.h * 0.4);
+        for (const it of row.items) {
+          let forceBreak = false;
+          if (cur) for (const vx of vLines) { if (vx > cur.endX && vx < it.x + 1) { forceBreak = true; break; } }
+          if (!cur || forceBreak || (it.x - cur.endX) > gapThr) {
+            if (cur) chunks.push(cur);
+            cur = { x: it.x, endX: it.x + it.w, str: it.str, items: [it] };
+          } else { cur.str += it.str; cur.endX = Math.max(cur.endX, it.x + it.w); cur.items.push(it); }
         }
-      }
-
-      // 셀 배경색 — fillRects (회색 헤더 등)
-      for (const fr of (pg.fillRects || [])) {
-        const [r0, g0, b0] = fr.color;
-        if (r0 >= 248 && g0 >= 248 && b0 >= 248) continue;
-        const argb = 'FF' + [r0, g0, b0].map(v => v.toString(16).padStart(2,'0')).join('').toUpperCase();
-        const c1 = Math.max(1, Math.floor(fr.x / cellCanvasW) + 1);
-        const c2 = Math.min(GRID_W, Math.floor((fr.x + fr.w) / cellCanvasW) + 1);
-        const r1 = Math.max(1, Math.floor(fr.y / (ROW_H_PT * pg.scale)) + 1);
-        const r2 = Math.min(rowsPerPage, Math.floor((fr.y + fr.h) / (ROW_H_PT * pg.scale)) + 1);
-        for (let r = r1; r <= r2; r++) {
-          for (let c = c1; c <= c2; c++) {
-            try {
-              const cell = ws.getCell(r, c);
-              cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb } };
-            } catch(_){}
+        if (cur) chunks.push(cur);
+        row.chunks = chunks;
+      });
+      // 모든 행 chunk x → 컬럼
+      const colXs = [];
+      rows.forEach(row => row.chunks.forEach(c => {
+        if (!colXs.some(x => Math.abs(x - c.x) <= 25)) colXs.push(c.x);
+      }));
+      colXs.sort((a, b) => a - b);
+      // 셀 데이터 채우기 — 자연스러운 표
+      const colMaxText = colXs.map(() => 4);
+      rows.forEach((row, rIdx) => {
+        const xlRow = ws.addRow([]);
+        colXs.forEach((cx, ci) => {
+          const cxNext = colXs[ci + 1] || cx + 99999;
+          const items = (row.chunks || []).filter(c => c.x >= cx - 15 && c.x < cxNext - 15);
+          const text = items.map(c => c.str).join(' ').trim();
+          if (text) {
+            const cell = xlRow.getCell(ci + 1);
+            cell.value = text;
+            // 셀 배경색
+            const fills = (pg.fillRects || []);
+            const cy = row.y + row.h / 2;
+            const cxMid = cx + (cxNext - cx) / 2;
+            for (const f of fills) {
+              if (cxMid >= f.x && cxMid <= f.x + f.w && cy >= f.y && cy <= f.y + f.h) {
+                const [r, g, b] = f.color;
+                if (r < 248 || g < 248 || b < 248) {
+                  cell.fill = { type: 'pattern', pattern: 'solid',
+                    fgColor: { argb: 'FF' + [r,g,b].map(v=>v.toString(16).padStart(2,'0')).join('').toUpperCase() } };
+                  cell.font = { bold: true };
+                }
+                break;
+              }
+            }
+            cell.border = {
+              top: { style: 'thin', color: { argb: 'FF888888' } },
+              left: { style: 'thin', color: { argb: 'FF888888' } },
+              bottom: { style: 'thin', color: { argb: 'FF888888' } },
+              right: { style: 'thin', color: { argb: 'FF888888' } },
+            };
+            cell.alignment = { vertical: 'middle', wrapText: true };
+            colMaxText[ci] = Math.max(colMaxText[ci], text.length);
           }
-        }
-      }
-
-      // 행 높이 적용 — 사용된 행만 (성능)
-      // ExcelJS 는 명시 안 하면 기본 12.75pt. 우리는 1pt 원함 → 모든 행 explicit
-      // 성능: 사용 행만 1pt, 나머지 default. (인쇄 fit-to-page 라 의미 없음)
-      // 여기서는 인쇄용 페이지 설정만 정확히
-      ws.pageSetup.paperSize = 9; // A4
+        });
+        totalRows++;
+      });
+      // 컬럼 너비 자동 조정 (글자 수 기반, 최대 40)
+      colMaxText.forEach((len, ci) => {
+        ws.getColumn(ci + 1).width = Math.min(40, Math.max(8, len * 1.8));
+      });
+      // 페이지 설정 — A4 portrait, fit-to-page (인쇄 시 1페이지)
+      ws.pageSetup.paperSize = 9;
       ws.pageSetup.orientation = 'portrait';
       ws.pageSetup.fitToPage = true;
       ws.pageSetup.fitToWidth = 1;
       ws.pageSetup.fitToHeight = 1;
-      ws.pageSetup.margins = { left: 0.3, right: 0.3, top: 0.3, bottom: 0.3, header: 0, footer: 0 };
+      ws.pageSetup.margins = { left: 0.4, right: 0.4, top: 0.4, bottom: 0.4 };
     }
-
-    if (totalCells === 0) {
+    if (totalRows === 0) {
       hideLoading();
-      alert('이 PDF 에는 텍스트 데이터가 없는 것 같아요.');
+      alert('이 PDF 에는 표 데이터가 없는 것 같아요.');
       return;
     }
-    showLoading('PDF → 엑셀(그리드) 변환 중…', '엑셀 파일 생성');
+    showLoading('PDF → 엑셀 변환 중…', '엑셀 파일 생성');
     const buf = await wb.xlsx.writeBuffer();
     const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     hideLoading();
-    downloadBytes(blob, setBaseName() + '_그리드.xlsx', blob.type);
-    log('info', `PDF → 엑셀(그리드) 변환 완료 (${totalCells}셀 / ${pdfState.pages.length}페이지)`);
+    downloadBytes(blob, setBaseName() + '_표.xlsx', blob.type);
+    log('info', `PDF → 엑셀 변환 완료 (${totalRows}행 / ${pdfState.pages.length}페이지)`);
   } catch (e) {
     hideLoading();
     console.error(e);
-    alert('엑셀(그리드) 변환 실패: ' + (e && e.message ? e.message : e));
+    alert('엑셀 변환 실패: ' + (e && e.message ? e.message : e));
   }
 }
 
