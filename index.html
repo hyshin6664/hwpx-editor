@@ -2692,25 +2692,12 @@ async function mountDocx(file) {
     savePdfBtn.disabled = false;
     hideWelcome();
     hideLoading();
-    // 모바일 화면 맞춤 — 큰 표/이미지 레이아웃 시간 고려해 여러 번 호출
+    // 모바일 화면 맞춤 — 초기 1회만. 사용자 핀치/스크롤 방해 X.
     const _fit = () => { try { window.__fitDocxToViewport && window.__fitDocxToViewport(); } catch(_){} };
     setTimeout(_fit, 50);
-    setTimeout(_fit, 300);
-    setTimeout(_fit, 800);
-    setTimeout(_fit, 2000);
-    // ResizeObserver — 화면 회전/리사이즈/콘텐츠 변경 시 자동 재조정 (모바일 핀치 후 해제 시도)
-    try {
-      const ro = new ResizeObserver(() => _fit());
-      ro.observe(document.getElementById('docxHost'));
-      // 정리: 다음 mountDocx 시 cleanup
-      window.__docxResizeObserver = ro;
-    } catch(_){}
-    // 모바일 visualViewport — 핀치/줌 변경 시 fit 재호출
-    if (window.visualViewport) {
-      const vvFit = () => _fit();
-      visualViewport.addEventListener('resize', vvFit);
-      window.__docxVvCleanup = () => visualViewport.removeEventListener('resize', vvFit);
-    }
+    setTimeout(_fit, 400);
+    setTimeout(_fit, 1500); // 큰 표/이미지 레이아웃 완료 후
+    // ResizeObserver / visualViewport 자동 재호출 안 함 — 사용자 핀치 자유롭게 가능
   } catch (err) {
     hideLoading();
     log("error", "DOCX 열기 실패: " + (err && err.message ? err.message : err));
@@ -3867,8 +3854,12 @@ async function exportPdfAsIdenticalDocx(opts) {
         }
       }
 
-      // 3) 본문 children 빌드
+      // 3) 본문 children 빌드 — 표 너비 추적
       const children = [];
+      // 페이지 가용 폭 (twips, A4 기준 720 twips 마진)
+      const portraitUsable = Math.round(pg.pdfPageWidth * 20) - 720 * 2;
+      const landscapeUsable = Math.round(pg.pdfPageHeight * 20) - 720 * 2;
+      let pgNeedsLandscape = false;
       const tableRowsSet = new Set();
       tableGroups.forEach(tg => tg.rows.forEach(idx => tableRowsSet.add(idx)));
       let inTableGroupIdx = 0;
@@ -3898,7 +3889,18 @@ async function exportPdfAsIdenticalDocx(opts) {
               return maxLen;
             });
             // 각 컬럼 너비 = max(글자수 * 110 twips + 여백 200, 800) twips
-            const cellWidthsTwips = colMinChars.map(len => Math.max(800, len * 110 + 200));
+            let cellWidthsTwips = colMinChars.map(len => Math.max(800, len * 110 + 200));
+            const tblTotalTwips = cellWidthsTwips.reduce((a, b) => a + b, 0);
+            // 페이지 가용 폭 결정 — 표가 portrait 안 들어가면 landscape, 그래도 초과면 비례 축소
+            let usable = portraitUsable;
+            if (tblTotalTwips > portraitUsable) {
+              pgNeedsLandscape = true;
+              usable = landscapeUsable;
+            }
+            if (cellWidthsTwips.reduce((a, b) => a + b, 0) > usable) {
+              const ratio = usable / cellWidthsTwips.reduce((a, b) => a + b, 0);
+              cellWidthsTwips = cellWidthsTwips.map(w => Math.max(700, Math.round(w * ratio)));
+            }
             // 셀 배경색 매칭 헬퍼: 주어진 (x, y, w, h) 영역과 가장 일치하는 fillRect 찾기
             function findCellFill(cellX, cellY, cellW, cellH) {
               const fills = pg.fillRects || [];
@@ -3961,6 +3963,10 @@ async function exportPdfAsIdenticalDocx(opts) {
             });
             // 표 전체 너비 합계 (twips) — 페이지가 충분히 넓어야 함
             const totalTblTwips = cellWidthsTwips.reduce((a, b) => a + b, 0);
+            if (totalTblTwips > pgMaxTblWidth) pgMaxTblWidth = totalTblTwips;
+            // 후 rescale 용
+            const tblInfo = { widths: cellWidthsTwips };
+            pgTablesForRescale.push(tblInfo);
             children.push(new docxLib.Table({
               rows: tblRows,
               width: { size: totalTblTwips, type: docxLib.WidthType.DXA },
@@ -3992,23 +3998,12 @@ async function exportPdfAsIdenticalDocx(opts) {
         children.push(new docxLib.Paragraph({ children: [new docxLib.TextRun({ text: '(빈 페이지)' })] }));
       }
       // 페이지 크기 = PDF 와 동일
-      // 페이지 사이즈 — 표 전체 너비가 portrait A4 가용 폭(8226 twips) 초과 시 landscape 자동
+      // 페이지 사이즈 — pgNeedsLandscape 가 children 빌드 시 결정됨
       let widthTwips = Math.max(2880, Math.round(pg.pdfPageWidth * 20));
       let heightTwips = Math.max(2880, Math.round(pg.pdfPageHeight * 20));
-      // 이 페이지의 모든 표 너비 중 최대값
-      let maxTblWidth = 0;
-      for (const ch of children) {
-        if (ch && ch.options && ch.options.width && ch.options.width.size) {
-          if (ch.options.width.size > maxTblWidth) maxTblWidth = ch.options.width.size;
-        }
-      }
-      const portraitMargins = 720 * 2; // 좌우 마진 합
-      const portraitUsable = widthTwips - portraitMargins;
-      let useLandscape = false;
-      if (maxTblWidth > portraitUsable) {
-        // landscape 로 전환 — 가로/세로 swap
+      let useLandscape = pgNeedsLandscape;
+      if (useLandscape) {
         const tmp = widthTwips; widthTwips = heightTwips; heightTwips = tmp;
-        useLandscape = true;
       }
       sections.push({
         properties: {
@@ -4982,11 +4977,16 @@ function fitDocxToViewport() {
     const containerW = host.clientWidth - 8;
     if (naturalW > containerW) {
       const scale = containerW / naturalW;
-      scaleTarget.style.transformOrigin = 'top left';
-      scaleTarget.style.transform = `scale(${scale})`;
+      // 1) transform 적용 전 자연 높이 측정 (정확)
       scaleTarget.style.width = naturalW + 'px';
       const naturalH = scaleTarget.scrollHeight;
+      // 2) 자식 transform → 시각상 작아지나 컨테이너 height 자동
+      scaleTarget.style.transformOrigin = 'top left';
+      scaleTarget.style.transform = `scale(${scale})`;
+      // 3) 컨테이너 height 명시 — scrollable 정상 (스크롤 끝까지 가능)
       scaleTarget.style.height = (naturalH * scale) + 'px';
+      // 4) 내부 page-break 같은 빈 공간 줄이기 — 자식 전체 시각 height 정확히 차지
+      scaleTarget.style.overflow = 'visible';
     }
   } else {
     reset();
