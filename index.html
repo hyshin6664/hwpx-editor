@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v22.0<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v22.1<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -3471,6 +3471,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v22.1", date: "2026-05-03", desc: "📐 PDF→Word 표 잘림 완전 해결 — landscape 페이지 width/height 직접 swap (orientation 명시 X — docx 라이브러리가 다시 swap 하던 버그 우회) · 큰 표(21컬럼·39행 등) 비례 축소 강화 (최소 350 twips, 균등 축소) · docx-preview wrap CSS 개선 (max-width:none, display:inline-block) · fitDocxToViewport 데스크톱 분기 추가 — host 폭 < 페이지 폭 시 자동 transform scale, 모든 컬럼 보임 · section/wrapper max-width:none !important 강제 · containerW 마진 48px (페이지 box-shadow 여백). 결과: 첫 페이지 큰 표가 host 안에 자동 fit, 우측 잘림 없음" },
   { version: "v22.0", date: "2026-05-03", desc: "📊 PDF → 엑셀(.xlsx) + 📈 구글 스프레드시트 추가 (사용자 제안) — 표 PDF 는 워드보다 엑셀이 자연스러움. ExcelJS(MIT) 사용, 셀 색·테두리·헤더 굵게 자동 적용. 컬럼 너비 자동 조정. · 구글 시트는 TSV 클립보드 복사 → sheets.new 새 탭 열림 → Ctrl+V 로 즉시. · 컬럼 분리 정확도 개선: 세로선이 chunk 사이를 가로지르면 강제 분리 (이체시간/출금계좌 합쳐지던 문제 보완)" },
   { version: "v21.9", date: "2026-05-03", desc: "📷 OCR 흐름 전면 개편 — 옛날 ‘페이지 이미지 + 텍스트 paragraph’ 박기 방식 폐기. 이제 OCR 도 우리 PDF→Word 표 구조 추출 변환을 사용 (그림이 아닌 진짜 표·셀·편집가능 텍스트). · 변환 결과 다운로드 X → 앱 안에서 워드 모드로 직접 띄움 (사용자가 그림인지 표인지 즉시 확인). · 텍스트 PDF 면 OCR 없이 바로 변환 가능 안내 표시" },
   { version: "v21.8", date: "2026-05-03", desc: "🎯 PDF → 워드 변환 고충실도 — getOperatorList 분석으로 표 테두리(constructPath/stroke) + 셀 배경색(fill) + 텍스트 색(setFillRGBColor) 자동 추출. DOCX 셀 shading + 텍스트 color 직접 적용. 검증: 예약이체 PDF 의 회색 헤더(#DEDEDE) 셀 배경이 워드에서도 회색으로 정확히 재현됨. 색상 정규화 (0-1/0-255/0-65535 모두 처리). · 📷 OCR 버튼 햄버거에서 PDF 툴바로 이동 (PDF 모드 전용)" },
