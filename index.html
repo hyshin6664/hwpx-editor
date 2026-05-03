@@ -3783,15 +3783,20 @@ async function exportPdfAsIdenticalDocx(opts) {
         let j = i + 1;
         const consecutive = [i];
         while (j < rows.length) {
-          if (rows[j].chunks.length < 2) break;
+          // 빈 행도 표 일부로 포함 (chunks.length < 2 라도 yGap 가까우면)
+          if (rows[j].chunks.length < 2) {
+            const yGap = rows[j].y - (rows[j-1].y + rows[j-1].h);
+            if (yGap < rows[j].h * 2) { consecutive.push(j); j++; continue; }
+            break;
+          }
           const nextXs = rows[j].chunks.map(c => c.x);
           let match = 0;
-          for (const x of nextXs) if (colXs.some(xx => Math.abs(xx - x) <= 25)) match++;
+          for (const x of nextXs) if (colXs.some(xx => Math.abs(xx - x) <= 30)) match++;
           const matchRate = match / Math.min(colXs.length, nextXs.length);
           const yGap = rows[j].y - (rows[j-1].y + rows[j-1].h);
           if (matchRate >= 0.5 && yGap < rows[j].h * 2) {
             consecutive.push(j);
-            for (const x of nextXs) if (!colXs.some(xx => Math.abs(xx - x) <= 25)) colXs.push(x);
+            for (const x of nextXs) if (!colXs.some(xx => Math.abs(xx - x) <= 30)) colXs.push(x);
             j++;
           } else break;
         }

@@ -68,10 +68,10 @@ def analyze_docx(path):
 def measure(pdf_name, table, truth):
     n_rows = len(table)
     n_cols = max(len(r) for r in table) if table else 0
-    all_cells_text = [c['text'] for r in table for c in r if c['text']]
-    found_set = set(all_cells_text)
+    # 모든 셀 텍스트 합쳐서 substring 검색 (셀 합치기·분할 등 OK)
+    all_text = ' '.join(c['text'] for r in table for c in r if c['text'])
     truth_set = set(t for t in truth['cells'] if t)
-    matched = truth_set & found_set
+    matched = set(t for t in truth_set if t in all_text)
     text_acc = len(matched) / len(truth_set) if truth_set else 0
 
     # 색상 인식
@@ -97,7 +97,7 @@ def measure(pdf_name, table, truth):
         'color': '✅' if color_ok else '❌',
         'rows_ok': rows_close,
         'cols_ok': cols_close,
-        'missing_words': list(truth_set - found_set)[:5],
+        'missing_words': list(truth_set - matched)[:5],
     }
 
 def run_one(page, pdf_path):
