@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v22.46<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v22.52<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -3471,6 +3471,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v22.52", date: "2026-05-03", desc: "📐 A4 사이즈 고정 + PDF 방향 자동 감지 (사용자 요청) — 이제 워드 페이지가 A4(11906×16838 twips)를 절대 넘지 않음. PDF 가 가로(landscape) 면 워드도 자동 가로, 세로면 세로. 큰 표가 portrait 안 들어가면 자동 landscape 전환 후에도 A4 가로 폭을 절대 안 넘게 비례 축소. · 마진 50 twips 통일." },
   { version: "v22.44", date: "2026-05-04", desc: "🎯 표 모양 라이브러리 매칭 (사용자 제안 — 깨끗한 표 + 텍스트 입히기) — lazy 무한 생성으로 표 종류 제한 없음. PDF 측정한 컬럼 너비 비율을 2% 단위로 round → 깨끗한 standard 비율로 normalize. 노이즈 제거로 워드 표 모양 더 정확. 색은 PDF 동적 그대로." },
   { version: "v22.43", date: "2026-05-04", desc: "📊 엑셀 그리드 방식 폐기 → 사용자 편집 친화 방식으로 회복. 1pt 미세 셀 200칸은 인쇄 시 시각 정확하지만 화면 편집 불가능했음. 워드와 동일한 표 추출 로직(행/컬럼 클러스터링) + A4 fit-to-page + wrapText 적용 — 사용자가 셀 단위로 직접 편집 가능. 워드(.docx)는 그대로 유지" },
   { version: "v22.42", date: "2026-05-04", desc: "📊 엑셀 그리드 방식 (사용자 제안) — 셀 가로 200칸 × 세로 1pt 미세 격자에 PDF 의 textBox/lineRect/fillRect 좌표를 정확하게 배치 + A4 fit-to-page. 워드 표 모델보다 시각 정확도 ↑ (32번 자동 측정 평균 16.26%, 워드 16.54%). · 워드(.docx) 와 엑셀(.xlsx 그리드) 둘 다 메뉴에서 선택 — 단순 표는 워드, 복잡 양식은 엑셀 그리드" },
@@ -3868,10 +3869,15 @@ async function exportPdfAsIdenticalDocx(opts) {
 
       // 3) 본문 children 빌드 — 표 너비 추적
       const children = [];
-      // 페이지 가용 폭 (twips, A4 기준 720 twips 마진)
-      const portraitUsable = Math.round(pg.pdfPageWidth * 20) - 720 * 2;
-      const landscapeUsable = Math.round(pg.pdfPageHeight * 20) - 720 * 2;
-      let pgNeedsLandscape = false;
+      // 🎯 A4 고정 + PDF 방향 자동 감지
+      // A4 portrait: 11906 × 16838 twips, landscape: 16838 × 11906
+      // 마진 50 twips × 2 = 100. usable = A4 - 100
+      const pdfIsLandscape = pg.pdfPageWidth > pg.pdfPageHeight;
+      const A4_PORTRAIT_W = 11906, A4_PORTRAIT_H = 16838, A4_MARGIN = 50;
+      const portraitUsable = A4_PORTRAIT_W - A4_MARGIN * 2;   // 11806
+      const landscapeUsable = A4_PORTRAIT_H - A4_MARGIN * 2;  // 16738
+      // PDF 가 landscape 면 처음부터 landscape 로 시작
+      let pgNeedsLandscape = pdfIsLandscape;
       const tableRowsSet = new Set();
       tableGroups.forEach(tg => tg.rows.forEach(idx => tableRowsSet.add(idx)));
       let inTableGroupIdx = 0;
@@ -3916,12 +3922,14 @@ async function exportPdfAsIdenticalDocx(opts) {
               cellWidthsTwips = ratios.map(r => Math.round(r * sumW));
             })();
             const tblTotalTwips = cellWidthsTwips.reduce((a, b) => a + b, 0);
-            // 페이지 가용 폭 결정 — 표가 portrait 안 들어가면 landscape, 그래도 초과면 비례 축소
-            let usable = portraitUsable;
-            if (tblTotalTwips > portraitUsable) {
-              // portrait 유지 — landscape 안 쓰면 페이지 수 일치 가능
-              usable = portraitUsable;
+            // 페이지 가용 폭 결정 — A4 절대 초과 금지
+            // PDF 가 landscape 거나, 표가 portrait 안 들어가면 landscape 전환
+            let usable = pgNeedsLandscape ? landscapeUsable : portraitUsable;
+            if (!pgNeedsLandscape && tblTotalTwips > portraitUsable) {
+              pgNeedsLandscape = true;
+              usable = landscapeUsable;
             }
+            // landscape 에서도 초과면 비례 축소 (A4 절대 안 넘김)
             const sumNow = cellWidthsTwips.reduce((a, b) => a + b, 0);
             if (sumNow > usable) {
               const ratio = usable / sumNow;
@@ -4027,24 +4035,15 @@ async function exportPdfAsIdenticalDocx(opts) {
       if (children.length === 0) {
         children.push(new docxLib.Paragraph({ children: [new docxLib.TextRun({ text: '(빈 페이지)' })] }));
       }
-      // 페이지 크기 = PDF 와 동일
-      // 페이지 사이즈 — landscape 시 width/height 직접 swap (orientation 명시는 docx 가 다시 swap 해서 무효)
-      const portraitW = Math.max(2880, Math.round(pg.pdfPageWidth * 20));
-      const portraitH = Math.max(2880, Math.round(pg.pdfPageHeight * 20));
-      let widthTwips, heightTwips;
-      if (pgNeedsLandscape) {
-        widthTwips = portraitH;  // 가로 = 원래 세로 길이
-        heightTwips = portraitW;
-      } else {
-        widthTwips = portraitW;
-        heightTwips = portraitH;
-      }
+      // 🎯 페이지 사이즈 = A4 고정 (PDF 사이즈 따라가지 않음)
+      // pgNeedsLandscape=true 면 A4 가로, 아니면 A4 세로
+      const widthTwips  = pgNeedsLandscape ? A4_PORTRAIT_H : A4_PORTRAIT_W;
+      const heightTwips = pgNeedsLandscape ? A4_PORTRAIT_W : A4_PORTRAIT_H;
       sections.push({
         properties: {
           page: {
-            // orientation 안 명시 — width/height 직접 swap 만으로 효과 구현
             size: { width: widthTwips, height: heightTwips },
-            margin: { top: 50, right: 50, bottom: 50, left: 50 },
+            margin: { top: A4_MARGIN, right: A4_MARGIN, bottom: A4_MARGIN, left: A4_MARGIN },
           },
         },
         children,
