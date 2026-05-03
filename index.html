@@ -3855,21 +3855,34 @@ async function exportPdfAsIdenticalDocx(opts) {
             function rgb2hex(rgb) {
               return rgb.map(v => v.toString(16).padStart(2, '0')).join('').toUpperCase();
             }
+            // 각 컬럼의 boundary 미리 계산
+            const colBounds = tg.cols.map((cx, k) => {
+              const left = (k === 0) ? -Infinity : (tg.cols[k-1] + cx) / 2;
+              const right = (k === tg.cols.length - 1) ? Infinity : (cx + tg.cols[k+1]) / 2;
+              return { left, right };
+            });
             const tblRows = tg.rows.map((rowIdx, rIdx) => {
               const row = rows[rowIdx];
               const rowYTop = row.y - 1;
               const rowYBot = (rows[rowIdx+1] ? rows[rowIdx+1].y : row.y + row.h*1.5) - 1;
+              // 모든 chunk 를 가장 많이 overlap 되는 컬럼에 배정 (정렬 무관, 가장 robust)
+              const chunksByCol = tg.cols.map(() => []);
+              for (const c of (row.chunks || [])) {
+                let bestCol = -1, bestOverlap = -1;
+                for (let k = 0; k < tg.cols.length; k++) {
+                  const cb = colBounds[k];
+                  const cLeft = isFinite(cb.left) ? cb.left : -1e9;
+                  const cRight = isFinite(cb.right) ? cb.right : 1e9;
+                  const overlap = Math.max(0, Math.min(c.endX, cRight) - Math.max(c.x, cLeft));
+                  if (overlap > bestOverlap) { bestOverlap = overlap; bestCol = k; }
+                }
+                if (bestCol >= 0 && bestOverlap > 0) chunksByCol[bestCol].push(c);
+              }
               const cells = tg.cols.map((cx, k) => {
                 const cxNext = tg.cols[k + 1] || cx + 99999;
                 const cellW = cxNext - cx;
                 const cellH = rowYBot - rowYTop;
-                // 이 셀의 chunk 매칭 범위 — 양옆 컬럼과의 중간점 기준 (정확한 영역 분배)
-                const cellLeft = (k === 0) ? -Infinity : (tg.cols[k-1] + cx) / 2;
-                const cellRight = (k === tg.cols.length - 1) ? Infinity : (cx + cxNext) / 2;
-                const chunks = (row.chunks || []).filter(c => {
-                  const cMid = c.x + (c.endX - c.x) / 2; // chunk 의 중심점
-                  return cMid >= cellLeft && cMid < cellRight;
-                });
+                const chunks = chunksByCol[k];
                 const text = chunks.map(c => c.str).join(' ').trim();
                 // 텍스트 색상 — chunk 의 첫 item 의 color
                 const textColor = (chunks.length > 0 && chunks[0].items && chunks[0].items[0] && chunks[0].items[0].color)
