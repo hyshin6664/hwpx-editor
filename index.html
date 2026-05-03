@@ -2692,8 +2692,25 @@ async function mountDocx(file) {
     savePdfBtn.disabled = false;
     hideWelcome();
     hideLoading();
-    // 모바일 화면 맞춤
-    setTimeout(() => { try { window.__fitDocxToViewport && window.__fitDocxToViewport(); } catch(_){} }, 100);
+    // 모바일 화면 맞춤 — 큰 표/이미지 레이아웃 시간 고려해 여러 번 호출
+    const _fit = () => { try { window.__fitDocxToViewport && window.__fitDocxToViewport(); } catch(_){} };
+    setTimeout(_fit, 50);
+    setTimeout(_fit, 300);
+    setTimeout(_fit, 800);
+    setTimeout(_fit, 2000);
+    // ResizeObserver — 화면 회전/리사이즈/콘텐츠 변경 시 자동 재조정 (모바일 핀치 후 해제 시도)
+    try {
+      const ro = new ResizeObserver(() => _fit());
+      ro.observe(document.getElementById('docxHost'));
+      // 정리: 다음 mountDocx 시 cleanup
+      window.__docxResizeObserver = ro;
+    } catch(_){}
+    // 모바일 visualViewport — 핀치/줌 변경 시 fit 재호출
+    if (window.visualViewport) {
+      const vvFit = () => _fit();
+      visualViewport.addEventListener('resize', vvFit);
+      window.__docxVvCleanup = () => visualViewport.removeEventListener('resize', vvFit);
+    }
   } catch (err) {
     hideLoading();
     log("error", "DOCX 열기 실패: " + (err && err.message ? err.message : err));
@@ -4939,12 +4956,20 @@ syncVoiceFabVisibility();
 function fitDocxToViewport() {
   const host = document.getElementById('docxHost');
   if (!host) return;
-  // .docx 가 section 자체일 수도, 그 부모일 수도 — 둘 다 대응
   const sections = host.querySelectorAll('section');
   if (sections.length === 0) return;
-  // scale 대상 = section들을 감싸는 가장 가까운 공통 조상 (보통 .docx-wrapper 또는 wrap div)
-  const scaleTarget = sections[0].parentElement; // section 의 직접 부모 (docx-wrapper)
-  const naturalW = sections[0].offsetWidth;
+  // scale 대상: 모든 sections 의 가장 위 부모(docx-wrapper) 또는 .docx 클래스
+  let scaleTarget = sections[0].parentElement;
+  // 만약 wrap (max-width:820px 인 우리 div) 이 부모라면 그 안의 wrapper 를 찾기
+  // 가장 안전: section 자체에 transform 적용
+  if (sections.length === 1) scaleTarget = sections[0];
+  // 측정: 가장 넓은 section (큰 표 들어갔을 수 있음)
+  let naturalW = 0;
+  sections.forEach(s => { if (s.offsetWidth > naturalW) naturalW = s.offsetWidth; });
+  // section 안 표가 sectionW 보다 넓을 수도 (overflow)
+  let maxTblW = 0;
+  host.querySelectorAll('table').forEach(t => { if (t.offsetWidth > maxTblW) maxTblW = t.offsetWidth; });
+  naturalW = Math.max(naturalW, maxTblW);
   if (naturalW <= 0) return;
 
   const reset = () => {
