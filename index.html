@@ -4988,7 +4988,8 @@ function fitDocxToViewport() {
 
   // 모바일·데스크톱 공통 — host 폭보다 페이지가 크면 자동 축소 (모든 컬럼 보이게)
   reset();
-  const containerW = host.clientWidth - 8;
+  // 좌우 마진 32px (페이지 그림자 + 미세 여백)
+  const containerW = host.clientWidth - 32;
   if (naturalW > containerW) {
     const scale = containerW / naturalW;
     scaleTarget.style.width = naturalW + 'px';
