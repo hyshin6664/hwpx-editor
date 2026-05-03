@@ -3863,8 +3863,9 @@ async function exportPdfAsIdenticalDocx(opts) {
                 const cxNext = tg.cols[k + 1] || cx + 99999;
                 const cellW = cxNext - cx;
                 const cellH = rowYBot - rowYTop;
-                // 이 셀에 들어갈 chunk
-                const chunks = (row.chunks || []).filter(c => c.x >= cx - 15 && c.x < cxNext - 15);
+                // 이 셀에 들어갈 chunk — 첫 컬럼은 -∞부터 (왼쪽으로 살짝 들어가는 chunk 누락 방지)
+                const cellLeft = (k === 0) ? -Infinity : cx - 15;
+                const chunks = (row.chunks || []).filter(c => c.x >= cellLeft && c.x < cxNext - 15);
                 const text = chunks.map(c => c.str).join(' ').trim();
                 // 텍스트 색상 — chunk 의 첫 item 의 color
                 const textColor = (chunks.length > 0 && chunks[0].items && chunks[0].items[0] && chunks[0].items[0].color)
