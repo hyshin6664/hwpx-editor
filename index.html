@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.12<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.19<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -1847,6 +1847,13 @@ async function mountPdf(file) {
         tb.color = (best && bestD < 50) ? best.color : [0, 0, 0];
       }
 
+      // 🎯 사용자 요청: 검은 직선만 표로 인식, 색은 무시
+      // lineRects 중 어두운 색만 (회색 200 이하 평균) 유지, 나머지는 표가 아닌 그림으로 간주
+      const darkLineRects = lineRects.filter(r => {
+        const c = r.color || [0,0,0];
+        const avg = (c[0] + c[1] + c[2]) / 3;
+        return avg < 180;  // 검은~진한 회색만
+      });
       const pageState = {
         pageIndex: i - 1,
         canvas, overlay,
@@ -1854,9 +1861,9 @@ async function mountPdf(file) {
         pdfPageWidth, pdfPageHeight,
         edits: [],
         textBoxes,
-        lineRects,    // 표 테두리 (stroke 된 사각형)
-        fillRects,    // 셀 배경색 (fill 된 사각형)
-        imageRects,   // 🎯 이미지 영역 (paintImage* ops) — canvas 에서 crop 해서 docx embed
+        lineRects: darkLineRects,  // 검은 직선만
+        fillRects: [],              // 색 인식 X (사용자 요청)
+        imageRects,                 // 이미지 영역 (paintImage* ops)
       };
       pdfState.pages.push(pageState);
       attachPageInteractions(pageState);
@@ -3487,6 +3494,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v23.19", date: "2026-05-04", desc: "🎯 사용자 요청 — 검은 직선만 표로 인식, 색 인식 X. fillRects 사용 안 함, lineRects 중 어두운 색(rgb 평균<180)만 사용." },
   { version: "v23.12", date: "2026-05-04", desc: "🎨 모자이크 격자 방식 (사용자 아이디어) — A4 = 1 큰 표(30x60), 셀 합치기로 표/텍스트 정확 배치. 격자 테두리 모두 투명." },
   { version: "v23.10", date: "2026-05-04", desc: "🎯 표 전체 테두리 NONE (사용자 아이디어 — 투명) — 평균 12.13%, 페이지 1 = 88.57%. 잘못 분리된 행이 시각적으로 안 보임." },
   { version: "v23.09", date: "2026-05-04", desc: "🎯 외곽 테두리만 (내부 NONE) — PDF 표 외곽 매칭 + 잘못된 줄 안 보임." },
