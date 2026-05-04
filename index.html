@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v22.92<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v22.93<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -1655,7 +1655,7 @@ async function mountPdf(file) {
     pdfState.numPages = pdfDoc.numPages;
     log("info", `PDF 로드: ${pdfDoc.numPages}페이지`);
 
-    const SCALE = 4.0;  // 이미지 fallback 품질 향상 (1.5 → 4.0)
+    const SCALE = 2.0;  // 이미지 fallback 품질 (sweet spot)
     for (let i = 1; i <= pdfDoc.numPages; i++) {
       const page = await pdfDoc.getPage(i);
       const viewport = page.getViewport({ scale: SCALE });
@@ -3487,6 +3487,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v22.93", date: "2026-05-04", desc: "🎯 SCALE 2.0 (4.0 더 나빠 — 1.5/2.0/2.5 비교)." },
   { version: "v22.92", date: "2026-05-04", desc: "🎯 SCALE 2.5 → 4.0 (이미지 fallback 더 선명)." },
   { version: "v22.91", date: "2026-05-04", desc: "🎯 PDF 캔버스 SCALE 1.5 → 2.5 — 이미지 fallback 품질 개선 (선명한 텍스트)." },
   { version: "v22.90", date: "2026-05-04", desc: "🎯 모든 페이지 이미지 fallback — 정확도 측정용 (편집성 X)." },
