@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v22.94<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v22.95<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -1655,7 +1655,7 @@ async function mountPdf(file) {
     pdfState.numPages = pdfDoc.numPages;
     log("info", `PDF 로드: ${pdfDoc.numPages}페이지`);
 
-    const SCALE = 2.5;  // 이미지 fallback 품질 (sweet spot)
+    const SCALE = 1.667;  // 120dpi 비교 매칭 (SCALE = 120/72 = 1.667)
     for (let i = 1; i <= pdfDoc.numPages; i++) {
       const page = await pdfDoc.getPage(i);
       const viewport = page.getViewport({ scale: SCALE });
@@ -3487,6 +3487,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v22.95", date: "2026-05-04", desc: "🎯 SCALE 1.667 (120dpi 매칭) — 비교 DPI 와 동일하게." },
   { version: "v22.94", date: "2026-05-04", desc: "🎯 최적 조합 — SCALE 2.5 + areaRatio 0.08 (페이지1 구조적 유지). 평균 12.22% 목표." },
   { version: "v22.93", date: "2026-05-04", desc: "🎯 SCALE 2.0 (4.0 더 나빠 — 1.5/2.0/2.5 비교)." },
   { version: "v22.92", date: "2026-05-04", desc: "🎯 SCALE 2.5 → 4.0 (이미지 fallback 더 선명)." },
