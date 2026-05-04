@@ -3976,7 +3976,7 @@ async function exportPdfAsIdenticalDocx(opts) {
                 const text = chs.map(c => c.str).join(' ').trim();
                 // 한국어 글자는 폭 2배로 카운트
                 let len = 0;
-                for (const ch of text) len += /[가-힯ㄱ-ㆎ]/.test(ch) ? 2 : 1;
+                for (const ch of text) len += /[가-힯ㄱ-ㆎ]/.test(ch) ? 1.9 : 1;
                 if (len > maxLen) maxLen = len;
               }
               return maxLen;
@@ -4070,7 +4070,7 @@ async function exportPdfAsIdenticalDocx(opts) {
                     spacing: { before: 0, after: 0, line: 200 },
                     children: [new docxLib.TextRun({
                       text,
-                      size: 9,
+                      size: 11,
                       color: rgb2hex(textColor),
                       font: { name: '맑은 고딕' },
                     })],
