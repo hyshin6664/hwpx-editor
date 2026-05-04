@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v22.72<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v22.81<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -1716,6 +1716,7 @@ async function mountPdf(file) {
       let lineRects = [];     // 가로/세로 선 (x, y, w, h)
       let fillRects = [];     // 채워진 사각형 (셀 배경)
       let textColors = [];    // 텍스트 색상 정보 (operator stream 에서 추출)
+      let imageRects = [];    // 🎯 이미지 영역 (paintImageXObject 등)
       try {
         const opList = await page.getOperatorList();
         const ops = pdfjs.OPS;
@@ -1811,6 +1812,20 @@ async function mountPdf(file) {
             pendingRects = [];
           } else if (fn === ops.endPath) {
             pendingRects = [];
+          } else if (fn === ops.paintImageXObject || fn === ops.paintInlineImageXObject || fn === ops.paintJpegXObject || fn === ops.paintImageXObjectRepeat) {
+            // 🎯 이미지 그리기 — CTM 의 변환으로 위치/크기 계산
+            // 이미지는 CTM 의 단위 사각형 (0,0)-(1,1) 에 그려짐
+            const m = getCTM();
+            const c1 = applyTransform(m, 0, 0);
+            const c2 = applyTransform(m, 1, 1);
+            const vT = viewport.transform;
+            const v1 = applyTransform(vT, c1[0], c1[1]);
+            const v2 = applyTransform(vT, c2[0], c2[1]);
+            const cx0 = Math.min(v1[0], v2[0]);
+            const cy0 = Math.min(v1[1], v2[1]);
+            const cw = Math.abs(v2[0] - v1[0]);
+            const ch = Math.abs(v2[1] - v1[1]);
+            if (cw > 20 && ch > 20) imageRects.push({ x: cx0, y: cy0, w: cw, h: ch });
           } else if (fn === ops.showText || fn === ops.showSpacedText) {
             // 텍스트 그리기 시점의 fill 색 = 텍스트 색
             // CTM 의 e,f 가 텍스트 위치 → 가까운 textBox 매칭
@@ -1841,6 +1856,7 @@ async function mountPdf(file) {
         textBoxes,
         lineRects,    // 표 테두리 (stroke 된 사각형)
         fillRects,    // 셀 배경색 (fill 된 사각형)
+        imageRects,   // 🎯 이미지 영역 (paintImage* ops) — canvas 에서 crop 해서 docx embed
       };
       pdfState.pages.push(pageState);
       attachPageInteractions(pageState);
@@ -3471,6 +3487,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v22.81", date: "2026-05-04", desc: "🖼️ PDF 이미지 영역 → 워드에 ImageRun 으로 embed (Phase 2). paintImageXObject ops 위치 추출 → canvas crop → PNG → ImageRun. 페이지 2,3 의 지도/도면/플로우차트 이미지가 워드에서도 보임." },
   { version: "v22.72", date: "2026-05-04", desc: "🎯 표 좌측 붙음 수정 (사용자 피드백) — 마지막 컬럼 우측 = PDF 페이지 우측까지 확장 + 표 가운데 정렬. 표 폭이 PDF 와 동일하게 우측까지 채워짐." },
   { version: "v22.71", date: "2026-05-04", desc: "🎯 빈 trailing 컬럼 자동 제거 — 모든 행에서 비어있는 우측 컬럼 정리. 5칼럼 중 3칼럼만 쓰면 3칼럼 표로." },
   { version: "v22.70", date: "2026-05-04", desc: "🔄 size 11 롤백 → 9 (v22.68 12.16% 최선). 표 폭/높이 PDF 실측 + 행 EXACT + spacing 200 안정화." },
@@ -4088,6 +4105,58 @@ async function exportPdfAsIdenticalDocx(opts) {
               children: [new docxLib.TextRun({ text, size: 22 })],
             }));
           }
+        }
+      }
+      // 🎯 PDF 이미지 영역 → canvas 에서 crop 해서 ImageRun 으로 embed
+      // 위치는 단순화 — 페이지 끝에 모아서 순서대로 (정확 좌표 보다 존재가 우선)
+      if (pg.canvas && pg.imageRects && pg.imageRects.length > 0) {
+        const merged = [];
+        const sortedImgs = pg.imageRects.slice().sort((a,b) => a.y - b.y);
+        // 인접 이미지 병합 (지도 같은 큰 이미지가 여러 op 으로 쪼개짐)
+        for (const r of sortedImgs) {
+          const last = merged[merged.length-1];
+          if (last && Math.abs(r.y - last.y) < 50 && Math.abs((r.x+r.w) - (last.x+last.w)) < 200) {
+            const minX = Math.min(last.x, r.x), minY = Math.min(last.y, r.y);
+            const maxX = Math.max(last.x+last.w, r.x+r.w), maxY = Math.max(last.y+last.h, r.y+r.h);
+            last.x = minX; last.y = minY; last.w = maxX - minX; last.h = maxY - minY;
+          } else {
+            merged.push({ ...r });
+          }
+        }
+        // 너무 큰 이미지(전체 페이지) 또는 작은 이미지 필터
+        const goodImgs = merged.filter(r => r.w > 30 && r.h > 30 && r.w * r.h > 5000);
+        for (const ir of goodImgs) {
+          try {
+            // crop canvas
+            const cropCanvas = document.createElement('canvas');
+            const cw = Math.min(Math.round(ir.w), pg.canvas.width - Math.round(ir.x));
+            const ch = Math.min(Math.round(ir.h), pg.canvas.height - Math.round(ir.y));
+            if (cw <= 0 || ch <= 0) continue;
+            cropCanvas.width = cw; cropCanvas.height = ch;
+            cropCanvas.getContext('2d').drawImage(pg.canvas, Math.round(ir.x), Math.round(ir.y), cw, ch, 0, 0, cw, ch);
+            const dataUrl = cropCanvas.toDataURL('image/png');
+            const byteStr = atob(dataUrl.split(',')[1]);
+            const ab = new ArrayBuffer(byteStr.length);
+            const u8 = new Uint8Array(ab);
+            for (let i = 0; i < byteStr.length; i++) u8[i] = byteStr.charCodeAt(i);
+            // crop 된 canvas 크기 → twips (canvas px / scale = pt, * 20 = twips)
+            // docx ImageRun transformation 은 px (96 dpi) — twips → px = twips/20*96/72
+            const widthPt = cw / pg.scale;
+            const heightPt = ch / pg.scale;
+            const widthPx = Math.round(widthPt * 96 / 72);
+            const heightPx = Math.round(heightPt * 96 / 72);
+            // A4 폭 안에 들어가게 캡 (margin 고려)
+            const maxPx = Math.round(((pgNeedsLandscape ? A4_PORTRAIT_H : A4_PORTRAIT_W) - A4_MARGIN*2) / 20 * 96 / 72);
+            let finalW = widthPx, finalH = heightPx;
+            if (finalW > maxPx) {
+              const ratio = maxPx / finalW;
+              finalW = maxPx; finalH = Math.round(finalH * ratio);
+            }
+            children.push(new docxLib.Paragraph({
+              spacing: { before: 0, after: 0 },
+              children: [new docxLib.ImageRun({ data: ab, type: 'png', transformation: { width: finalW, height: finalH } })],
+            }));
+          } catch (e) { console.warn('이미지 embed 실패:', e); }
         }
       }
       if (children.length === 0) {
