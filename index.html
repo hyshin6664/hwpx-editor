@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v22.62<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v22.63<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -3471,6 +3471,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v22.63", date: "2026-05-04", desc: "🎯 셀 단락 line spacing 200 (Round6 우승) — 17.22% → 16.48%. 한국어 줄간격이 PDF 와 더 가까움." },
   { version: "v22.53", date: "2026-05-04", desc: "🎯 표 비율 round 4% 적용 (Round5 우승) — 16.82% → 16.49% (5종 5p→5p 페이지 일치). 25^N 가지 표 모양 lazy 생성." },
   { version: "v22.52", date: "2026-05-03", desc: "📐 A4 사이즈 고정 + PDF 방향 자동 감지 (사용자 요청) — 이제 워드 페이지가 A4(11906×16838 twips)를 절대 넘지 않음. PDF 가 가로(landscape) 면 워드도 자동 가로, 세로면 세로. 큰 표가 portrait 안 들어가면 자동 landscape 전환 후에도 A4 가로 폭을 절대 안 넘게 비례 축소. · 마진 50 twips 통일." },
   { version: "v22.44", date: "2026-05-04", desc: "🎯 표 모양 라이브러리 매칭 (사용자 제안 — 깨끗한 표 + 텍스트 입히기) — lazy 무한 생성으로 표 종류 제한 없음. PDF 측정한 컬럼 너비 비율을 2% 단위로 round → 깨끗한 standard 비율로 normalize. 노이즈 제거로 워드 표 모양 더 정확. 색은 PDF 동적 그대로." },
@@ -3983,7 +3984,7 @@ async function exportPdfAsIdenticalDocx(opts) {
                 const cellOpts = {
                   width: { size: cellWidthsTwips[k], type: docxLib.WidthType.DXA },
                   children: [new docxLib.Paragraph({
-                    spacing: { before: 0, after: 0, line: 240 },
+                    spacing: { before: 0, after: 0, line: 200 },
                     children: [new docxLib.TextRun({
                       text,
                       size: 9,
