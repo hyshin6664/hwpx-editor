@@ -3779,7 +3779,7 @@ async function exportPdfAsIdenticalDocx(opts) {
       // 1) Y 클러스터링 — 같은 줄
       tbs.sort((a, b) => a.y - b.y || a.x - b.x);
       const rows = [];
-      const rowTol = 8;
+      const rowTol = 3;
       for (const tb of tbs) {
         const lastRow = rows[rows.length - 1];
         if (lastRow && Math.abs(tb.y - lastRow.y) <= rowTol) {
