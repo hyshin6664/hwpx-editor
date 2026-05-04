@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v22.70<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v22.71<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -3471,6 +3471,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v22.71", date: "2026-05-04", desc: "🎯 빈 trailing 컬럼 자동 제거 — 모든 행에서 비어있는 우측 컬럼 정리. 5칼럼 중 3칼럼만 쓰면 3칼럼 표로." },
   { version: "v22.70", date: "2026-05-04", desc: "🔄 size 11 롤백 → 9 (v22.68 12.16% 최선). 표 폭/높이 PDF 실측 + 행 EXACT + spacing 200 안정화." },
   { version: "v22.69", date: "2026-05-04", desc: "🎯 셀 글자 크기 9 → 11 (PDF 텍스트 밀도 매칭)" },
   { version: "v22.68", date: "2026-05-04", desc: "🐛 v22.67 의 페이지 오버플로우 수정 (5p→6p) — 행 높이 ATLEAST 240 → EXACT 120 으로 변경." },
@@ -3895,6 +3896,21 @@ async function exportPdfAsIdenticalDocx(opts) {
           // 이 행이 표의 일부 — 그룹 시작점이면 표 통째로 출력
           const tg = tableGroups[inTableGroupIdx];
           if (tg && tg.rows[0] === r) {
+            // 🎯 빈 trailing 컬럼 정리 — 모든 행에서 텍스트 없는 우측 컬럼 제거
+            (function trimEmptyTrailingCols() {
+              while (tg.cols.length > 1) {
+                const lastIdx = tg.cols.length - 1;
+                const cxLast = tg.cols[lastIdx];
+                let hasContent = false;
+                for (const rIdx of tg.rows) {
+                  const row = rows[rIdx];
+                  const chs = (row.chunks || []).filter(c => c.x >= cxLast - 15);
+                  if (chs.some(c => (c.str || '').trim())) { hasContent = true; break; }
+                }
+                if (!hasContent) tg.cols = tg.cols.slice(0, lastIdx);
+                else break;
+              }
+            })();
             // 표 만들기
             // 🎯 셀 너비 — PDF 실제 컬럼 폭 기준 (canvas px → twips)
             // tg.cols[k] = k번째 컬럼 좌측 좌표(canvas px), 마지막 컬럼 우측은 추정
