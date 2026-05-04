@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.16<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.17<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -4242,7 +4242,7 @@ async function exportPdfAsIdenticalDocx(opts) {
       // 표/텍스트를 비율대로 셀 합치기로 배치. 격자 테두리는 모두 투명.
       const USE_MOSAIC = !vectorHeavy && pg.canvas && tableGroups.length > 0;
       if (USE_MOSAIC) try {
-        const COLS = 40, ROWS = 80;
+        const COLS = 30, ROWS = 100;
         const usableW = (pgNeedsLandscape ? A4_PORTRAIT_H : A4_PORTRAIT_W) - A4_MARGIN * 2;
         const usableH = (pgNeedsLandscape ? A4_PORTRAIT_W : A4_PORTRAIT_H) - A4_MARGIN * 2;
         const cellWtw = Math.floor(usableW / COLS);
