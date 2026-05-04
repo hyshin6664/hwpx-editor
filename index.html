@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.15<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.12<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -3487,9 +3487,6 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
-  { version: "v23.15", date: "2026-05-04", desc: "🎨 모자이크 — 비-표 chunk 도 위치별 claim (각 chunk 가 자기 격자 위치에)." },
-  { version: "v23.14", date: "2026-05-04", desc: "🔄 격자 40x80 → 30x60 (Word 표 한계 회피). v23.12 = 11.91% 안정화." },
-  { version: "v23.13", date: "2026-05-04", desc: "🎨 모자이크 격자 40x80 (해상도 ↑ 더 정확한 위치)." },
   { version: "v23.12", date: "2026-05-04", desc: "🎨 모자이크 격자 방식 (사용자 아이디어) — A4 = 1 큰 표(30x60), 셀 합치기로 표/텍스트 정확 배치. 격자 테두리 모두 투명." },
   { version: "v23.10", date: "2026-05-04", desc: "🎯 표 전체 테두리 NONE (사용자 아이디어 — 투명) — 평균 12.13%, 페이지 1 = 88.57%. 잘못 분리된 행이 시각적으로 안 보임." },
   { version: "v23.09", date: "2026-05-04", desc: "🎯 외곽 테두리만 (내부 NONE) — PDF 표 외곽 매칭 + 잘못된 줄 안 보임." },
@@ -4293,29 +4290,18 @@ async function exportPdfAsIdenticalDocx(opts) {
             }
           }
         }
-        // 2) 표 외 행 → 각 chunk 위치별로 격자에 claim
+        // 2) 표 외 행 → 격자에 claim (단락)
         for (let r = 0; r < rows.length; r++) {
           if (tableRowsSet2.has(r)) continue;
           const row = rows[r];
+          const text = (row.chunks || []).map(c => c.str).join(' ').trim()
+                    || row.items.map(it => it.str).join('');
+          if (!text) continue;
           const yTop = row.y;
           const yBot = (rows[r+1] ? rows[r+1].y : row.y + row.h * 1.5);
           const r0 = Math.floor(yTop / cellHpx);
           const r1 = Math.ceil(yBot / cellHpx);
-          const rc = Math.max(1, r1 - r0);
-          const chunks = row.chunks || [];
-          if (chunks.length > 0) {
-            // 각 chunk 위치/너비별로 claim
-            for (let i = 0; i < chunks.length; i++) {
-              const ch = chunks[i];
-              const c0 = Math.floor(ch.x / cellWpx);
-              const chEnd = (chunks[i+1] ? chunks[i+1].x : Math.min(pg.canvas.width, ch.x + (ch.w || cellWpx*4)));
-              const c1 = Math.ceil(chEnd / cellWpx);
-              claim(r0, c0, rc, Math.max(1, c1 - c0), makePara(ch.str || '', 11));
-            }
-          } else {
-            const text = row.items.map(it => it.str).join('');
-            if (text) claim(r0, 0, rc, COLS, makePara(text, 11));
-          }
+          claim(r0, 0, Math.max(1, r1 - r0), COLS, makePara(text, 11));
         }
         // 3) 격자 → docx Table
         const noBorder = { style: docxLib.BorderStyle.NONE, size: 0, color: 'FFFFFF' };
