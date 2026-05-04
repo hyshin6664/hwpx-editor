@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v22.66<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v22.67<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -3471,6 +3471,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v22.67", date: "2026-05-04", desc: "🎯 표 행 높이도 PDF 실측 기준 — 빈 셀이 너무 좁게 압축되던 문제. 행 별로 PDF 의 px 높이 측정 → twips 변환." },
   { version: "v22.66", date: "2026-05-04", desc: "🎯 표 폭 확장 조건 정밀화 — usable 50~85% 만 95% 로 확장. 작은 박스(범례·서브) 는 작게 유지." },
   { version: "v22.65", date: "2026-05-04", desc: "🐛 v22.64 의 landscape 오작동 수정 — PDF 자체가 portrait 인데 표 측정이 살짝 넘쳐서 landscape 로 잘못 전환되던 문제. 이제 landscape 는 PDF 자체가 가로일 때만 적용. portrait 초과 시 비례 축소로 처리." },
   { version: "v22.64", date: "2026-05-04", desc: "🎯 표 폭 = PDF 실측 컬럼 폭 기준 (사용자 피드백 — 첫장 표가 너무 좁게 나오던 문제). 기존: 텍스트 길이만 기준 → 짧은 컬럼 100twips. 신규: tg.cols 실측 px → pt → twips, 텍스트 길이는 최소 보장만. + 표가 usable 85% 미만이면 95% 까지 자동 확장." },
@@ -4026,7 +4027,12 @@ async function exportPdfAsIdenticalDocx(opts) {
                 }
                 return new docxLib.TableCell(cellOpts);
               });
-              return new docxLib.TableRow({ children: cells });
+              // 🎯 행 높이 = PDF 실측 (canvas px → twips), 최소 240
+              const rowHeightTwips = Math.max(240, Math.round(((rowYBot - rowYTop) / pg.scale) * 20));
+              return new docxLib.TableRow({
+                children: cells,
+                height: { value: rowHeightTwips, rule: docxLib.HeightRule.ATLEAST },
+              });
             });
             // 표 전체 너비 합계 (twips) — 페이지가 충분히 넓어야 함
             const totalTblTwips = cellWidthsTwips.reduce((a, b) => a + b, 0);
