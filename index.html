@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v22.71<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v22.72<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -3471,6 +3471,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v22.72", date: "2026-05-04", desc: "🎯 표 좌측 붙음 수정 (사용자 피드백) — 마지막 컬럼 우측 = PDF 페이지 우측까지 확장 + 표 가운데 정렬. 표 폭이 PDF 와 동일하게 우측까지 채워짐." },
   { version: "v22.71", date: "2026-05-04", desc: "🎯 빈 trailing 컬럼 자동 제거 — 모든 행에서 비어있는 우측 컬럼 정리. 5칼럼 중 3칼럼만 쓰면 3칼럼 표로." },
   { version: "v22.70", date: "2026-05-04", desc: "🔄 size 11 롤백 → 9 (v22.68 12.16% 최선). 표 폭/높이 PDF 실측 + 행 EXACT + spacing 200 안정화." },
   { version: "v22.69", date: "2026-05-04", desc: "🎯 셀 글자 크기 9 → 11 (PDF 텍스트 밀도 매칭)" },
@@ -3914,15 +3915,21 @@ async function exportPdfAsIdenticalDocx(opts) {
             // 표 만들기
             // 🎯 셀 너비 — PDF 실제 컬럼 폭 기준 (canvas px → twips)
             // tg.cols[k] = k번째 컬럼 좌측 좌표(canvas px), 마지막 컬럼 우측은 추정
+            // 마지막 컬럼 우측 = PDF 페이지 우측 마진까지 (보통 PDF 폭의 95%) 또는
+            // 행 중에서 가장 우측에 있는 chunk 의 끝 + 여유, 둘 중 큰 값
+            let tableRightPx = pg.pdfPageWidth * pg.scale * 0.95;
+            for (const rIdx of tg.rows) {
+              const row = rows[rIdx];
+              for (const c of (row.chunks || [])) {
+                const right = c.x + (c.w || 0);
+                if (right > tableRightPx) tableRightPx = right;
+              }
+            }
             const colPxWidths = tg.cols.map((cx, k) => {
               const cxNext = tg.cols[k + 1];
               if (cxNext) return cxNext - cx;
-              // 마지막 컬럼 — 이전 컬럼들 평균 사용
-              if (tg.cols.length >= 2) {
-                const avgs = tg.cols.slice(0, -1).map((c, i) => tg.cols[i+1] - c);
-                return avgs.reduce((a,b)=>a+b,0) / avgs.length;
-              }
-              return 200;
+              // 마지막 컬럼 = 표 우측 - 마지막 컬럼 좌측
+              return Math.max(50, tableRightPx - cx);
             });
             // 보조 — 텍스트 길이로 최소 너비 보장
             const colMinChars = tg.cols.map((cx, k) => {
@@ -4058,6 +4065,7 @@ async function exportPdfAsIdenticalDocx(opts) {
             children.push(new docxLib.Table({
               rows: tblRows,
               width: { size: totalTblTwips, type: docxLib.WidthType.DXA },
+              alignment: docxLib.AlignmentType.CENTER,
               columnWidths: cellWidthsTwips,
               borders: {
                 top:    { style: docxLib.BorderStyle.SINGLE, size: 4, color: '888888' },
