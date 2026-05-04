@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v22.82<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v22.83<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -3487,6 +3487,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v22.83", date: "2026-05-04", desc: "🐛 v22.82 의 mixed page (표+지도) 6p 오버플로우 수정 — 임계값 엄격화 (vectorOps > 200 + text < 50). + paintImage* crop 임시 disable (위치 부정확)." },
   { version: "v22.82", date: "2026-05-04", desc: "🖼️ vector 그래픽 페이지 fallback — fillRects/lineRects 많고 텍스트 적으면 페이지 전체를 이미지로 embed. PDF 가 지도/도면/플로우차트를 path 로 그려서 paintImage 안 잡히던 문제 해결." },
   { version: "v22.81", date: "2026-05-04", desc: "🖼️ PDF 이미지 영역 → 워드에 ImageRun 으로 embed (Phase 2). paintImageXObject ops 위치 추출 → canvas crop → PNG → ImageRun. 페이지 2,3 의 지도/도면/플로우차트 이미지가 워드에서도 보임." },
   { version: "v22.72", date: "2026-05-04", desc: "🎯 표 좌측 붙음 수정 (사용자 피드백) — 마지막 컬럼 우측 = PDF 페이지 우측까지 확장 + 표 가운데 정렬. 표 폭이 PDF 와 동일하게 우측까지 채워짐." },
@@ -4112,7 +4113,8 @@ async function exportPdfAsIdenticalDocx(opts) {
       // PDF 가 지도/도면/플로우차트를 vector path 로 그릴 때 paintImage* op 안 나옴
       const vectorOpsCount = (pg.fillRects?.length || 0) + (pg.lineRects?.length || 0);
       const textCount = (pg.textBoxes?.length || 0);
-      const vectorHeavy = vectorOpsCount > 50 && textCount < vectorOpsCount * 1.5;
+      // 매우 vector heavy + 텍스트 적음 (지도/도면 전용 페이지)
+      const vectorHeavy = vectorOpsCount > 200 && textCount < 50;
       if (vectorHeavy && pg.canvas) {
         try {
           // 페이지 전체를 한 장의 이미지로 embed (편집 가능한 표 대신 시각 정확도 우선)
@@ -4139,9 +4141,8 @@ async function exportPdfAsIdenticalDocx(opts) {
           }));
         } catch (e) { console.warn('페이지 이미지 fallback 실패:', e); }
       }
-      // 🎯 PDF 이미지 영역 → canvas 에서 crop 해서 ImageRun 으로 embed
-      // 위치는 단순화 — 페이지 끝에 모아서 순서대로 (정확 좌표 보다 존재가 우선)
-      if (!vectorHeavy && pg.canvas && pg.imageRects && pg.imageRects.length > 0) {
+      // 🎯 PDF 이미지 영역 → canvas 에서 crop 해서 ImageRun 으로 embed (실제 paintImage* op 만)
+      if (!vectorHeavy && pg.canvas && pg.imageRects && pg.imageRects.length > 0 && false) {
         const merged = [];
         const sortedImgs = pg.imageRects.slice().sort((a,b) => a.y - b.y);
         // 인접 이미지 병합 (지도 같은 큰 이미지가 여러 op 으로 쪼개짐)
