@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v22.96<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v22.97<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -1655,7 +1655,7 @@ async function mountPdf(file) {
     pdfState.numPages = pdfDoc.numPages;
     log("info", `PDF 로드: ${pdfDoc.numPages}페이지`);
 
-    const SCALE = 1.667;  // 120dpi 비교 매칭 (SCALE = 120/72 = 1.667)
+    const SCALE = 2.5;  // 이미지 fallback 품질
     for (let i = 1; i <= pdfDoc.numPages; i++) {
       const page = await pdfDoc.getPage(i);
       const viewport = page.getViewport({ scale: SCALE });
@@ -3487,6 +3487,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v22.97", date: "2026-05-04", desc: "🎯 첫 페이지 구조적 강제 + 나머지 SCALE 2.5 fallback (혼합 최적)." },
   { version: "v22.96", date: "2026-05-04", desc: "🎯 비-표 단락 폰트 맑은 고딕 명시." },
   { version: "v22.95", date: "2026-05-04", desc: "🎯 SCALE 1.667 (120dpi 매칭) — 비교 DPI 와 동일하게." },
   { version: "v22.94", date: "2026-05-04", desc: "🎯 최적 조합 — SCALE 2.5 + areaRatio 0.08 (페이지1 구조적 유지). 평균 12.22% 목표." },
@@ -4140,9 +4141,12 @@ async function exportPdfAsIdenticalDocx(opts) {
       // 1) paintImage* op 있고 텍스트 적음
       // 2) vector 면적 비율 20%+ (지도/도면/플로우차트)
       // 3) vector ops 압도적 + 텍스트 적음
-      const vectorHeavy = (imgCount > 0 && textCount < 100)
+      // 첫 페이지(제목+표) 는 구조적 추출이 더 정확 — 예외
+      const vectorHeavy = pi !== 0 && (
+                          (imgCount > 0 && textCount < 100)
                        || vectorAreaRatio > 0.08
-                       || (vectorOpsCount > 100 && textCount < vectorOpsCount * 0.6);
+                       || (vectorOpsCount > 100 && textCount < vectorOpsCount * 0.6)
+                       );
       console.log(`[Page ${pi+1}] vectorOps=${vectorOpsCount}, text=${textCount}, imgs=${imgCount}, areaRatio=${(vectorAreaRatio*100).toFixed(1)}%, vectorHeavy=${vectorHeavy}`);
       if (vectorHeavy && pg.canvas) {
         try {
