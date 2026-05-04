@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.18<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.12<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -4267,30 +4267,7 @@ async function exportPdfAsIdenticalDocx(opts) {
             children: [new docxLib.TextRun({ text: text || '', size: size || 9, color: color || '000000', font: { name: '맑은 고딕' } })],
           })];
         }
-        // 1) 표 각 셀 → PDF 캔버스에서 잘라낸 이미지로 격자에 claim (시각 100% 일치)
-        function cropCellAsImage(xPx, yPx, wPx, hPx) {
-          const cw = Math.max(1, Math.round(wPx));
-          const ch = Math.max(1, Math.round(hPx));
-          if (xPx < 0 || yPx < 0 || xPx + cw > pg.canvas.width || yPx + ch > pg.canvas.height) return null;
-          const c = document.createElement('canvas');
-          c.width = cw; c.height = ch;
-          c.getContext('2d').drawImage(pg.canvas, Math.round(xPx), Math.round(yPx), cw, ch, 0, 0, cw, ch);
-          const dataUrl = c.toDataURL('image/png');
-          const byteStr = atob(dataUrl.split(',')[1]);
-          const ab = new ArrayBuffer(byteStr.length);
-          const u8 = new Uint8Array(ab);
-          for (let i = 0; i < byteStr.length; i++) u8[i] = byteStr.charCodeAt(i);
-          // canvas px → docx px (96dpi)
-          const widthPx = Math.round((cw / pg.scale) * 96 / 72);
-          const heightPx = Math.round((ch / pg.scale) * 96 / 72);
-          return new docxLib.ImageRun({ data: ab, type: 'png', transformation: { width: widthPx, height: heightPx } });
-        }
-        function makeImagePara(imgRun) {
-          return [new docxLib.Paragraph({
-            spacing: { before: 0, after: 0 },
-            children: imgRun ? [imgRun] : [new docxLib.TextRun({ text: '' })],
-          })];
-        }
+        // 1) 표 각 셀 → 격자에 claim
         const tableRowsSet2 = new Set();
         tableGroups.forEach(tg => tg.rows.forEach(idx => tableRowsSet2.add(idx)));
         for (const tg of tableGroups) {
@@ -4300,13 +4277,16 @@ async function exportPdfAsIdenticalDocx(opts) {
             const yBot = (rows[rIdx+1] ? rows[rIdx+1].y : row.y + row.h * 1.5);
             for (let k = 0; k < tg.cols.length; k++) {
               const cx = tg.cols[k];
-              const cxNext = tg.cols[k+1] || Math.min(pg.canvas.width, cx + cellWpx * 4);
+              const cxNext = tg.cols[k+1] || cx + cellWpx * 4;
+              const xL = (k === 0) ? 0 : cx - 15;
+              const xR = (k === tg.cols.length - 1) ? Infinity : cxNext - 15;
+              const chunks = (row.chunks || []).filter(c => c.x >= xL && c.x < xR);
+              const text = chunks.map(c => c.str).join(' ').trim();
               const r0 = Math.floor(yTop / cellHpx);
               const c0 = Math.floor(cx / cellWpx);
               const r1 = Math.ceil(yBot / cellHpx);
               const c1 = Math.ceil(Math.min(pg.canvas.width, cxNext) / cellWpx);
-              const imgRun = cropCellAsImage(cx, yTop, cxNext - cx, yBot - yTop);
-              claim(r0, c0, Math.max(1, r1 - r0), Math.max(1, c1 - c0), makeImagePara(imgRun));
+              claim(r0, c0, Math.max(1, r1 - r0), Math.max(1, c1 - c0), makePara(text, 9));
             }
           }
         }
