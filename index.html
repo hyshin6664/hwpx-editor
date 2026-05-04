@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.00<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.01<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -3487,6 +3487,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v23.01", date: "2026-05-04", desc: "🖼️ 첫 페이지 배경 이미지 + 편집 가능한 표 오버레이 (실험)." },
   { version: "v23.00", date: "2026-05-04", desc: "🎯 내부 테두리 색 CCCCCC → AAAAAA (PDF 와 더 비슷한 진하기)." },
   { version: "v22.99", date: "2026-05-04", desc: "🎯 테두리 size 2 → 1 (가장 얇게). 평균 12.13% → ?" },
   { version: "v22.98", date: "2026-05-04", desc: "🎯 표 테두리 size 4 → 2 (얇게)." },
@@ -4144,12 +4145,38 @@ async function exportPdfAsIdenticalDocx(opts) {
       // 1) paintImage* op 있고 텍스트 적음
       // 2) vector 면적 비율 20%+ (지도/도면/플로우차트)
       // 3) vector ops 압도적 + 텍스트 적음
-      // 첫 페이지(제목+표) 는 구조적 추출이 더 정확 — 예외
+      // 첫 페이지(제목+표) 는 구조적 추출 + 배경 이미지 오버레이 (시각 정확도 + 편집 가능)
       const vectorHeavy = pi !== 0 && (
                           (imgCount > 0 && textCount < 100)
                        || vectorAreaRatio > 0.08
                        || (vectorOpsCount > 100 && textCount < vectorOpsCount * 0.6)
                        );
+      // 첫 페이지: 배경 이미지 anchor 로 추가
+      if (pi === 0 && pg.canvas) {
+        try {
+          const dataUrl = pg.canvas.toDataURL('image/png');
+          const byteStr = atob(dataUrl.split(',')[1]);
+          const ab = new ArrayBuffer(byteStr.length);
+          const u8 = new Uint8Array(ab);
+          for (let i = 0; i < byteStr.length; i++) u8[i] = byteStr.charCodeAt(i);
+          const widthPt = pg.canvas.width / pg.scale;
+          const heightPt = pg.canvas.height / pg.scale;
+          const widthPx = Math.round(widthPt * 96 / 72);
+          const heightPx = Math.round(heightPt * 96 / 72);
+          // 배경 이미지를 첫 단락에 anchor (behindDocument)
+          const bgImage = new docxLib.ImageRun({
+            data: ab, type: 'png',
+            transformation: { width: widthPx, height: heightPx },
+            floating: {
+              horizontalPosition: { relative: docxLib.HorizontalPositionRelativeFrom.PAGE, offset: 0 },
+              verticalPosition: { relative: docxLib.VerticalPositionRelativeFrom.PAGE, offset: 0 },
+              behindDocument: true,
+              layoutInCell: true,
+            },
+          });
+          children.unshift(new docxLib.Paragraph({ children: [bgImage] }));
+        } catch (e) { console.warn('배경 이미지 실패:', e); }
+      }
       console.log(`[Page ${pi+1}] vectorOps=${vectorOpsCount}, text=${textCount}, imgs=${imgCount}, areaRatio=${(vectorAreaRatio*100).toFixed(1)}%, vectorHeavy=${vectorHeavy}`);
       if (vectorHeavy && pg.canvas) {
         try {
