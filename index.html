@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v22.65<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v22.66<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -3471,6 +3471,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v22.66", date: "2026-05-04", desc: "🎯 표 폭 확장 조건 정밀화 — usable 50~85% 만 95% 로 확장. 작은 박스(범례·서브) 는 작게 유지." },
   { version: "v22.65", date: "2026-05-04", desc: "🐛 v22.64 의 landscape 오작동 수정 — PDF 자체가 portrait 인데 표 측정이 살짝 넘쳐서 landscape 로 잘못 전환되던 문제. 이제 landscape 는 PDF 자체가 가로일 때만 적용. portrait 초과 시 비례 축소로 처리." },
   { version: "v22.64", date: "2026-05-04", desc: "🎯 표 폭 = PDF 실측 컬럼 폭 기준 (사용자 피드백 — 첫장 표가 너무 좁게 나오던 문제). 기존: 텍스트 길이만 기준 → 짧은 컬럼 100twips. 신규: tg.cols 실측 px → pt → twips, 텍스트 길이는 최소 보장만. + 표가 usable 85% 미만이면 95% 까지 자동 확장." },
   { version: "v22.63", date: "2026-05-04", desc: "🎯 셀 단락 line spacing 200 (Round6 우승) — 17.22% → 16.48%. 한국어 줄간격이 PDF 와 더 가까움." },
@@ -3944,10 +3945,11 @@ async function exportPdfAsIdenticalDocx(opts) {
             // landscape 전환은 PDF 자체가 landscape 일 때만 (페이지 수 일치 위해)
             // portrait PDF 의 표가 살짝 넘쳐도 비례 축소로 처리 (landscape 변환 X)
             let usable = pgNeedsLandscape ? landscapeUsable : portraitUsable;
-            // 🎯 표가 usable 의 85% 보다 좁으면 비례 확장 (A4 폭 제대로 활용)
+            // 🎯 표가 usable 50~85% 사이면 95% 까지 확장 (작은 표는 그대로)
+            // 작은 박스(범례/서브) 는 작게 유지, 본문 큰 표만 풀폭으로
             {
               const curSum = cellWidthsTwips.reduce((a, b) => a + b, 0);
-              if (curSum > 0 && curSum < usable * 0.85) {
+              if (curSum > usable * 0.5 && curSum < usable * 0.85) {
                 const exp = (usable * 0.95) / curSum;
                 cellWidthsTwips = cellWidthsTwips.map(w => Math.round(w * exp));
               }
