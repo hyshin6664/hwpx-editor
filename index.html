@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v22.81<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v22.82<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -3487,6 +3487,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v22.82", date: "2026-05-04", desc: "🖼️ vector 그래픽 페이지 fallback — fillRects/lineRects 많고 텍스트 적으면 페이지 전체를 이미지로 embed. PDF 가 지도/도면/플로우차트를 path 로 그려서 paintImage 안 잡히던 문제 해결." },
   { version: "v22.81", date: "2026-05-04", desc: "🖼️ PDF 이미지 영역 → 워드에 ImageRun 으로 embed (Phase 2). paintImageXObject ops 위치 추출 → canvas crop → PNG → ImageRun. 페이지 2,3 의 지도/도면/플로우차트 이미지가 워드에서도 보임." },
   { version: "v22.72", date: "2026-05-04", desc: "🎯 표 좌측 붙음 수정 (사용자 피드백) — 마지막 컬럼 우측 = PDF 페이지 우측까지 확장 + 표 가운데 정렬. 표 폭이 PDF 와 동일하게 우측까지 채워짐." },
   { version: "v22.71", date: "2026-05-04", desc: "🎯 빈 trailing 컬럼 자동 제거 — 모든 행에서 비어있는 우측 컬럼 정리. 5칼럼 중 3칼럼만 쓰면 3칼럼 표로." },
@@ -4107,9 +4108,40 @@ async function exportPdfAsIdenticalDocx(opts) {
           }
         }
       }
+      // 🎯 vector 그래픽 많은 페이지 fallback — fillRects 또는 lineRects 가 많고 텍스트 적으면 페이지 전체를 이미지로 embed
+      // PDF 가 지도/도면/플로우차트를 vector path 로 그릴 때 paintImage* op 안 나옴
+      const vectorOpsCount = (pg.fillRects?.length || 0) + (pg.lineRects?.length || 0);
+      const textCount = (pg.textBoxes?.length || 0);
+      const vectorHeavy = vectorOpsCount > 50 && textCount < vectorOpsCount * 1.5;
+      if (vectorHeavy && pg.canvas) {
+        try {
+          // 페이지 전체를 한 장의 이미지로 embed (편집 가능한 표 대신 시각 정확도 우선)
+          const dataUrl = pg.canvas.toDataURL('image/png');
+          const byteStr = atob(dataUrl.split(',')[1]);
+          const ab = new ArrayBuffer(byteStr.length);
+          const u8 = new Uint8Array(ab);
+          for (let i = 0; i < byteStr.length; i++) u8[i] = byteStr.charCodeAt(i);
+          const widthPt = pg.canvas.width / pg.scale;
+          const heightPt = pg.canvas.height / pg.scale;
+          const widthPx = Math.round(widthPt * 96 / 72);
+          const heightPx = Math.round(heightPt * 96 / 72);
+          const maxPx = Math.round(((pgNeedsLandscape ? A4_PORTRAIT_H : A4_PORTRAIT_W) - A4_MARGIN*2) / 20 * 96 / 72);
+          let finalW = widthPx, finalH = heightPx;
+          if (finalW > maxPx) {
+            const ratio = maxPx / finalW;
+            finalW = maxPx; finalH = Math.round(finalH * ratio);
+          }
+          // 표/텍스트 children 다 비우고 페이지 이미지 하나로
+          children.length = 0;
+          children.push(new docxLib.Paragraph({
+            spacing: { before: 0, after: 0 },
+            children: [new docxLib.ImageRun({ data: ab, type: 'png', transformation: { width: finalW, height: finalH } })],
+          }));
+        } catch (e) { console.warn('페이지 이미지 fallback 실패:', e); }
+      }
       // 🎯 PDF 이미지 영역 → canvas 에서 crop 해서 ImageRun 으로 embed
       // 위치는 단순화 — 페이지 끝에 모아서 순서대로 (정확 좌표 보다 존재가 우선)
-      if (pg.canvas && pg.imageRects && pg.imageRects.length > 0) {
+      if (!vectorHeavy && pg.canvas && pg.imageRects && pg.imageRects.length > 0) {
         const merged = [];
         const sortedImgs = pg.imageRects.slice().sort((a,b) => a.y - b.y);
         // 인접 이미지 병합 (지도 같은 큰 이미지가 여러 op 으로 쪼개짐)
