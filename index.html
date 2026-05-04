@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.11<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.10<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -3487,7 +3487,6 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
-  { version: "v23.11", date: "2026-05-04", desc: "🐛 표가 이미지로 잘못 나오던 문제 (사용자 피드백) — 표 테두리·셀 헤더가 vector 로 카운트되어 fallback 트리거. 50x50 이상 큰 fillRect 만 카운트하도록 수정." },
   { version: "v23.10", date: "2026-05-04", desc: "🎯 표 전체 테두리 NONE (사용자 아이디어 — 투명) — 평균 12.13%, 페이지 1 = 88.57%. 잘못 분리된 행이 시각적으로 안 보임." },
   { version: "v23.09", date: "2026-05-04", desc: "🎯 외곽 테두리만 (내부 NONE) — PDF 표 외곽 매칭 + 잘못된 줄 안 보임." },
   { version: "v23.08", date: "2026-05-04", desc: "🎯 모든 표 테두리 NONE (실험) — 잘못된 행도 다 안 보임. 텍스트만 비교." },
@@ -4140,12 +4139,11 @@ async function exportPdfAsIdenticalDocx(opts) {
       const imgCount = (pg.imageRects?.length || 0);
       // vector 영역 면적 합계 — 페이지 면적 대비 비율
       const pageArea = (pg.canvas?.width || 1) * (pg.canvas?.height || 1);
-      // 🎯 표 테두리(얇은 선)는 vector 로 안 침 — 큰 fillRect (지도/도면 채움) 만 카운트
-      // 표 셀 배경은 작은 회색 (헤더) 라 작은 fillRect 만 → 면적 적음. 지도/도면은 큰 컬러 fill → 면적 큼.
       let vectorArea = 0;
-      for (const r of (pg.fillRects || [])) {
-        // 큰 fillRect (>50x50px) 만 면적 누적 (셀 헤더 같은 작은 회색은 제외)
-        if (r.w > 50 && r.h > 50) vectorArea += r.w * r.h;
+      for (const r of (pg.fillRects || [])) vectorArea += r.w * r.h;
+      for (const r of (pg.lineRects || [])) {
+        // 선은 면적 없음 — 길이를 너비 5px 으로 가정
+        vectorArea += Math.max(r.w, r.h) * 5;
       }
       const vectorAreaRatio = vectorArea / pageArea;
       // 이미지/도면 페이지 감지:
