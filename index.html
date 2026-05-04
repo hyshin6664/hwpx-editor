@@ -4144,7 +4144,7 @@ async function exportPdfAsIdenticalDocx(opts) {
       // 첫 페이지(제목+표) 는 구조적 추출이 더 정확 — 예외
       const vectorHeavy = pi !== 0 && (
                           (imgCount > 0 && textCount < 100)
-                       || vectorAreaRatio > 0.06
+                       || vectorAreaRatio > 0.10
                        || (vectorOpsCount > 100 && textCount < vectorOpsCount * 0.6)
                        );
       console.log(`[Page ${pi+1}] vectorOps=${vectorOpsCount}, text=${textCount}, imgs=${imgCount}, areaRatio=${(vectorAreaRatio*100).toFixed(1)}%, vectorHeavy=${vectorHeavy}`);
