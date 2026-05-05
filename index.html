@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.20<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.21<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -3493,6 +3493,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v23.21", date: "2026-05-04", desc: "🎯 PDF_TABLES_PROJECT V17 핵심 인사이트 이식 — NULL/control char 제거 + 셀 폰트 size mode 자동 감지 + 셀 정렬 padding ratio 기반 (left/center/right) + 한국어 폰트명 매핑 (맑은 고딕/돋움/굴림 등)." },
   { version: "v23.20", date: "2026-05-04", desc: "🙈 OCR 버튼 숨김 (정확도 더 높일 때까지 대기). 내부 로직은 유지." },
   { version: "v23.19", date: "2026-05-04", desc: "🎯 사용자 요청 — 검은 직선만 표로 인식, 색 인식 X. fillRects 사용 안 함, lineRects 중 어두운 색(rgb 평균<180)만 사용." },
   { version: "v23.12", date: "2026-05-04", desc: "🎨 모자이크 격자 방식 (사용자 아이디어) — A4 = 1 큰 표(30x60), 셀 합치기로 표/텍스트 정확 배치. 격자 테두리 모두 투명." },
@@ -4269,11 +4270,64 @@ async function exportPdfAsIdenticalDocx(opts) {
             if (!(r === rs && c === cs)) grid[r][c] = { cont: true };
           return true;
         }
-        function makePara(text, size, color) {
-          return [new docxLib.Paragraph({
+        // V17 인사이트 적용:
+        // 1) NULL/control char 제거 (\x00-\x08, \x0B, \x0C, \x0E-\x1F)
+        // 2) 한국어 폰트명 매핑
+        // 3) 셀 정렬 = padding ratio (left/center/right)
+        function sanitizeText(t) {
+          if (!t) return '';
+          return t.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '').replace(/[ \t]+/g, ' ');
+        }
+        function mapFont(name) {
+          if (!name) return '맑은 고딕';
+          const base = name.replace(/^[A-Z]{6}\+/, '').replace(/[-_].*$/, '').toLowerCase();
+          if (/malgun|maluen/.test(base)) return '맑은 고딕';
+          if (/dotum/.test(base)) return '돋움';
+          if (/gulim/.test(base)) return '굴림';
+          if (/batang/.test(base)) return '바탕';
+          if (/gungsuh|gungseo/.test(base)) return '궁서';
+          if (/nanumgothic/.test(base)) return '나눔고딕';
+          if (/nanummyeongjo/.test(base)) return '나눔명조';
+          if (/arial/.test(base)) return 'Arial';
+          if (/times|tnr/.test(base)) return 'Times New Roman';
+          if (/calibri/.test(base)) return 'Calibri';
+          return '맑은 고딕';
+        }
+        function makePara(text, size, color, align) {
+          const props = {
             spacing: { before: 0, after: 0, line: 200 },
-            children: [new docxLib.TextRun({ text: text || '', size: size || 9, color: color || '000000', font: { name: '맑은 고딕' } })],
-          })];
+            children: [new docxLib.TextRun({ text: sanitizeText(text), size: size || 9, color: color || '000000', font: { name: '맑은 고딕' } })],
+          };
+          if (align === 'center') props.alignment = docxLib.AlignmentType.CENTER;
+          else if (align === 'right') props.alignment = docxLib.AlignmentType.RIGHT;
+          return [new docxLib.Paragraph(props)];
+        }
+        // chunk 들의 dominant size + 정렬 추정
+        function detectCellMeta(chunks, cellLeftPx, cellRightPx) {
+          if (!chunks || chunks.length === 0) return { size: 9, align: 'left' };
+          // size mode
+          const sizes = chunks.flatMap(ch => (ch.items || []).map(it => it.height ? Math.round(it.height) : null)).filter(Boolean);
+          let size = 9;
+          if (sizes.length > 0) {
+            const cnt = {};
+            for (const s of sizes) cnt[s] = (cnt[s] || 0) + 1;
+            const modePt = parseInt(Object.entries(cnt).sort((a,b) => b[1]-a[1])[0][0]);
+            // px → pt: pdf.js item.height is canvas px. pt = px/scale. docx size = pt*2 (half-point)
+            const pt = modePt / (pg.scale || 1.667);
+            size = Math.max(6, Math.min(20, Math.round(pt * 2)));
+          }
+          // align: text x extent vs cell
+          const minX = Math.min(...chunks.map(c => c.x));
+          const maxX = Math.max(...chunks.map(c => c.x + (c.w || 0)));
+          const leftPad = minX - cellLeftPx;
+          const rightPad = cellRightPx - maxX;
+          const total = leftPad + rightPad + 1e-6;
+          const ratio = leftPad / total;
+          let align = 'left';
+          if (ratio < 0.25) align = 'left';
+          else if (ratio > 0.75) align = 'right';
+          else if (Math.abs(leftPad - rightPad) < 20) align = 'center';
+          return { size, align };
         }
         // 1) 표 각 셀 → 격자에 claim
         const tableRowsSet2 = new Set();
@@ -4294,7 +4348,8 @@ async function exportPdfAsIdenticalDocx(opts) {
               const c0 = Math.floor(cx / cellWpx);
               const r1 = Math.ceil(yBot / cellHpx);
               const c1 = Math.ceil(Math.min(pg.canvas.width, cxNext) / cellWpx);
-              claim(r0, c0, Math.max(1, r1 - r0), Math.max(1, c1 - c0), makePara(text, 9));
+              const meta = detectCellMeta(chunks, Math.max(0, cx), Math.min(pg.canvas.width, cxNext));
+              claim(r0, c0, Math.max(1, r1 - r0), Math.max(1, c1 - c0), makePara(text, meta.size, '000000', meta.align));
             }
           }
         }
