@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.28<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.29<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -3465,7 +3465,6 @@ setMode = function(m) {
   const isSafari = /Safari\//.test(ua) && !/Chrome|Chromium|Edg\//.test(ua);
 
   installBtn.addEventListener('click', async () => {
-    // 1) deferred 있으면 즉시 native prompt
     if (deferred) {
       try {
         deferred.prompt();
@@ -3475,64 +3474,10 @@ setMode = function(m) {
       deferred = null;
       return;
     }
-    // 2) 아직 안 도착했을 수도 — 짧게 기다림 (최대 1.2초)
-    const waitDeferred = new Promise(res => {
-      const t = setTimeout(() => res(null), 1200);
-      window.addEventListener('beforeinstallprompt', (e) => {
-        e.preventDefault();
-        deferred = e;
-        clearTimeout(t);
-        res(e);
-      }, { once: true });
-    });
-    const ev = await waitDeferred;
-    if (ev) {
-      try {
-        ev.prompt();
-        const choice = await ev.userChoice;
-        if (choice && choice.outcome === 'accepted') installBtn.hidden = true;
-      } catch (e) {}
-      deferred = null;
-      return;
-    }
-    // 3) iOS/Android — OS별 안내 (PWA install 자체가 OS 제약)
+    // 안내 모달 (prompt 미지원 — iOS Safari, macOS Safari, Android Chrome 미충족 등)
     const isAndroid = /Android/.test(ua);
-    if (isIOS || isAndroid) {
-      showInstallGuide(isIOS ? 'ios' : 'android');
-      return;
-    }
-    // 4) PC — 브라우저가 PWA install prompt 안 보내면 .url 파일 다운로드
-    //    (Windows: 더블클릭 시 브라우저로 열림. 다운로드 폴더 → 바탕화면 끌어다 놓기)
-    downloadUrlShortcut();
+    showInstallGuide(isIOS ? 'ios' : isAndroid ? 'android' : 'pc');
   });
-
-  function downloadUrlShortcut() {
-    const siteUrl = location.origin + location.pathname;
-    // 아이콘 — 호스팅된 .ico (Windows 가 기본 인식, 이쁘게 표시)
-    const iconUrl = location.origin + (location.pathname.replace(/index\.html$/, '') || '/') + 'icon.ico';
-    // Windows .url 형식 (CRLF)
-    const content = [
-      '[InternetShortcut]',
-      `URL=${siteUrl}`,
-      `IconFile=${iconUrl}`,
-      'IconIndex=0',
-      'HotKey=0',
-      ''
-    ].join('\r\n');
-    const blob = new Blob([content], { type: 'application/internet-shortcut' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'Solbox Docs.url';
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
-    const t = document.createElement('div');
-    t.style.cssText = 'position:fixed;top:60px;right:20px;background:#3b3654;color:#fff;padding:14px 18px;border-radius:10px;font-size:13px;line-height:1.5;box-shadow:0 6px 24px rgba(0,0,0,.3);z-index:99999;max-width:320px;';
-    t.innerHTML = '✅ <b>Solbox Docs.url</b> 다운로드!<br>다운로드 폴더 → 바탕화면으로 끌어오기.<br><span style="opacity:.7;font-size:12px;">별도창 열기는 브라우저 메뉴 → "앱으로 설치" 한 번 해주세요.</span>';
-    document.body.appendChild(t);
-    setTimeout(() => { t.style.opacity = '0'; t.style.transition = 'opacity .5s'; }, 6500);
-    setTimeout(() => t.remove(), 7300);
-  }
 
   function showInstallGuide(kind) {
     const wrap = document.createElement('div');
@@ -3582,6 +3527,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v23.29", date: "2026-05-04", desc: "🔄 PWA install 로직 원복 — deferred 있으면 native prompt, 없으면 OS별 안내 모달. .url 다운로드 fallback 제거 (사용자가 chrome://apps 에서 직접 관리)." },
   { version: "v23.28", date: "2026-05-04", desc: "🐛 표 잘못 분리 v2 — 짧은 세로선(꺾쇠·박스 모서리) 이 column separator 로 잘못 인식되던 문제. 표 높이의 60% 이상 되는 긴 세로선만 인정. 판교 PDF 페이지 1 신청자 유의사항 박스 단일 컬럼으로 정상 출력 확인." },
   { version: "v23.27", date: "2026-05-04", desc: "🐛 표 잘못 분리 수정 — 세로선 (검은 직선) 이 영역 안에 2개 이상 있어야 표로 인식. 단락 줄바꿈을 컬럼으로 오인하던 문제 해결." },
   { version: "v23.26", date: "2026-05-04", desc: "📌 바로가기 한 번 클릭으로 — PWA install 안 떠도 .url(Windows 인터넷 바로가기) 자동 다운로드. 다운로드 폴더에서 바탕화면으로 끌어다 놓기만 하면 됨." },
