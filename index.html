@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.30<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.31<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -1592,9 +1592,7 @@ async function mountPdf(file) {
       <button class="tool" data-tool="erase-text" title="드래그한 영역 안의 글자만 골라서 지움 (배경·이미지·선은 그대로)">✂️ 글자만 지우기</button>
       <button class="tool" data-tool="text">✏️ 글씨</button>
       <span class="tool-sep"></span>
-      <button class="tool" id="pdfToWordBtn" title="PDF 를 편집 가능한 워드(.docx) 로 변환 — 표/텍스트 자동 추출">📝 워드로 변환</button>
-      <button class="tool" id="pdfToExcelBtn" title="PDF 표를 엑셀(.xlsx) 로 — 셀 단위 편집 가능">📊 엑셀로</button>
-      <button class="tool" id="pdfToHtmlBtn" title="PDF → HTML — 위치 100% 일치 + 브라우저에서 바로 글자 클릭 수정. 받는 사람도 그냥 더블클릭하면 열림" style="background:#dcd0f8;color:#3b3654;font-weight:700">🌐 HTML 로 (정확)</button>
+      <button class="tool" id="pdfToHtmlBtn" title="PDF → HTML 편집본 — 위치 100% 일치 + 브라우저에서 바로 글자 클릭 수정. 받는 사람도 그냥 더블클릭하면 열림" style="background:#dcd0f8;color:#3b3654;font-weight:700">🌐 편집 가능 HTML 로 변환</button>
       <span class="tool-sep"></span>
       <button class="tool" id="pdfOcrBtn" hidden style="display:none !important" aria-hidden="true">📷 OCR</button>
       <button class="tool" id="pdfUndoBtn" disabled>↶ 되돌리기</button>
@@ -3533,6 +3531,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v23.31", date: "2026-05-04", desc: "🌐 PDF 툴바 정리 — 워드/엑셀 변환 버튼 제거, [편집 가능 HTML 로 변환] 만 남김. HTML 결과: PDF 와 동일 사이즈 (@page size pt) + 툴바에 [💾 저장] [🖨️ 인쇄] [📄 PDF 로 저장] 3개 버튼." },
   { version: "v23.30", date: "2026-05-04", desc: "🌐 PDF → HTML 변환 추가 (사용자 제안) — 위치 100% 일치. 배경 PDF 페이지 이미지 + 절대좌표 contenteditable 텍스트박스. 브라우저에서 클릭해서 바로 수정 + [수정본 저장] 버튼. 단일 .html 파일 (이미지 base64 임베드). 받는 사람은 더블클릭만 하면 열림." },
   { version: "v23.29", date: "2026-05-04", desc: "🔄 PWA install 로직 원복 — deferred 있으면 native prompt, 없으면 OS별 안내 모달. .url 다운로드 fallback 제거 (사용자가 chrome://apps 에서 직접 관리)." },
   { version: "v23.28", date: "2026-05-04", desc: "🐛 표 잘못 분리 v2 — 짧은 세로선(꺾쇠·박스 모서리) 이 column separator 로 잘못 인식되던 문제. 표 높이의 60% 이상 되는 긴 세로선만 인정. 판교 PDF 페이지 1 신청자 유의사항 박스 단일 컬럼으로 정상 출력 확인." },
@@ -4552,6 +4551,10 @@ ${textDivs.join('\n')}
     }
     showLoading('PDF → HTML 변환 중…', 'HTML 파일 생성');
     const docTitle = (setBaseName ? setBaseName() : 'document') + '_편집가능';
+    // 첫 페이지 사이즈로 @page 크기 고정 (PDF 와 정확히 동일하게 인쇄)
+    const firstPg = pages[0];
+    const printPageW = firstPg.pdfPageWidth;
+    const printPageH = firstPg.pdfPageHeight;
     const html = `<!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -4559,12 +4562,14 @@ ${textDivs.join('\n')}
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${docTitle}</title>
 <style>
+  @page { size: ${printPageW}pt ${printPageH}pt; margin: 0; }
   * { box-sizing: border-box; }
-  body { margin: 0; padding: 24px 12px; background: #e5e6ea; font-family: '맑은 고딕', 'Malgun Gothic', sans-serif; }
-  .toolbar { position:sticky; top:0; z-index:10; background:#fff; padding:10px 16px; border-radius:10px; box-shadow:0 2px 12px rgba(0,0,0,.12); margin:0 auto 20px; max-width:900px; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
-  .toolbar button { background:#c7b8ee; color:#fff; border:0; padding:8px 14px; border-radius:8px; font:inherit; font-weight:700; cursor:pointer; }
+  html, body { margin: 0; padding: 0; }
+  body { background: #e5e6ea; font-family: '맑은 고딕', 'Malgun Gothic', sans-serif; padding: 70px 12px 24px; }
+  .toolbar { position:fixed; top:12px; left:0; right:0; z-index:1000; background:#fff; padding:10px 16px; border-radius:10px; box-shadow:0 2px 12px rgba(0,0,0,.18); margin:0 auto; max-width:760px; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .toolbar button { background:#c7b8ee; color:#fff; border:0; padding:9px 14px; border-radius:8px; font:inherit; font-weight:700; cursor:pointer; font-size:13px; }
   .toolbar button:hover { background:#b8a6e0; }
-  .toolbar .info { color:#666; font-size:13px; margin-left:auto; }
+  .toolbar .info { color:#888; font-size:12px; margin-left:auto; }
   .page {
     background: #fff;
     margin: 0 auto 20px;
@@ -4575,7 +4580,6 @@ ${textDivs.join('\n')}
   .page .bg {
     position: absolute; top:0; left:0;
     width: 100%; height: 100%;
-    object-fit: cover;
     pointer-events: none;
     user-select: none;
   }
@@ -4591,16 +4595,18 @@ ${textDivs.join('\n')}
   .tb:focus { outline: 2px solid #6a4ce0; background: rgba(255,255,255,.92); z-index:5; }
   @media print {
     body { background:#fff; padding:0; }
-    .toolbar { display:none; }
+    .toolbar { display:none !important; }
     .page { box-shadow:none; margin:0; page-break-after:always; }
+    .page:last-child { page-break-after: auto; }
   }
 </style>
 </head>
 <body>
 <div class="toolbar">
-  <button onclick="window.print()">🖨️ 인쇄 (PDF 저장)</button>
-  <button onclick="downloadEdited()">💾 수정본 저장 (.html)</button>
-  <span class="info">글자를 클릭해서 바로 수정하세요. CDN & Cloud is by Solbox..</span>
+  <button onclick="downloadEdited()" title="수정한 내용을 .html 파일로 저장">💾 저장 (.html)</button>
+  <button onclick="window.print()" title="프린터로 인쇄">🖨️ 인쇄</button>
+  <button onclick="window.print()" title="브라우저 인쇄 대화창에서 'PDF 로 저장' 선택">📄 PDF 로 저장</button>
+  <span class="info">글자 클릭 → 수정 · CDN & Cloud is by Solbox..</span>
 </div>
 ${pageHtmls.join('\n')}
 <script>
@@ -4609,9 +4615,9 @@ function downloadEdited(){
   const blob = new Blob([html], {type:'text/html;charset=utf-8'});
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = ${JSON.stringify(docTitle)} + '_수정본.html';
-  a.click();
-  setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
+  a.download = ${JSON.stringify(docTitle)} + '.html';
+  document.body.appendChild(a); a.click();
+  setTimeout(()=>{URL.revokeObjectURL(a.href); a.remove();}, 1000);
 }
 </script>
 </body>
