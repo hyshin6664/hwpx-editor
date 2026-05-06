@@ -3508,12 +3508,15 @@ setMode = function(m) {
 
   function downloadUrlShortcut() {
     const siteUrl = location.origin + location.pathname;
+    // 아이콘 — 호스팅된 .ico (Windows 가 기본 인식, 이쁘게 표시)
+    const iconUrl = location.origin + (location.pathname.replace(/index\.html$/, '') || '/') + 'icon.ico';
     // Windows .url 형식 (CRLF)
     const content = [
       '[InternetShortcut]',
       `URL=${siteUrl}`,
-      `IconFile=${location.origin}/hwpx-editor/icon-192.svg`,
+      `IconFile=${iconUrl}`,
       'IconIndex=0',
+      'HotKey=0',
       ''
     ].join('\r\n');
     const blob = new Blob([content], { type: 'application/internet-shortcut' });
@@ -3523,13 +3526,12 @@ setMode = function(m) {
     document.body.appendChild(a);
     a.click();
     setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
-    // 짧은 안내
     const t = document.createElement('div');
-    t.style.cssText = 'position:fixed;top:60px;right:20px;background:#3b3654;color:#fff;padding:14px 18px;border-radius:10px;font-size:13px;line-height:1.5;box-shadow:0 6px 24px rgba(0,0,0,.3);z-index:99999;max-width:300px;';
-    t.innerHTML = '✅ <b>Solbox Docs.url</b> 다운로드 완료!<br>다운로드 폴더에서 바탕화면으로 끌어다 놓으면 됩니다.';
+    t.style.cssText = 'position:fixed;top:60px;right:20px;background:#3b3654;color:#fff;padding:14px 18px;border-radius:10px;font-size:13px;line-height:1.5;box-shadow:0 6px 24px rgba(0,0,0,.3);z-index:99999;max-width:320px;';
+    t.innerHTML = '✅ <b>Solbox Docs.url</b> 다운로드!<br>다운로드 폴더 → 바탕화면으로 끌어오기.<br><span style="opacity:.7;font-size:12px;">별도창 열기는 브라우저 메뉴 → "앱으로 설치" 한 번 해주세요.</span>';
     document.body.appendChild(t);
-    setTimeout(() => { t.style.opacity = '0'; t.style.transition = 'opacity .5s'; }, 5000);
-    setTimeout(() => t.remove(), 5800);
+    setTimeout(() => { t.style.opacity = '0'; t.style.transition = 'opacity .5s'; }, 6500);
+    setTimeout(() => t.remove(), 7300);
   }
 
   function showInstallGuide(kind) {
