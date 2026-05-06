@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.23<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.24<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -3564,6 +3564,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v23.24", date: "2026-05-04", desc: "🐛 모자이크 격자 OFF (사용자 피드백) — 측정상 좋아도 실제 워드 열어보면 빈 셀(30×60) 가 페이지 뒤덮어 편집 불가능. 기존 구조적 표 추출 방식 복원 (편집 친화적). V17 인사이트 (NULL char + size mode + 정렬 자동 + 폰트 매핑) 은 유지." },
   { version: "v23.23", date: "2026-05-04", desc: "🔧 PDF 툴바에 [📝 워드로 변환] [📊 엑셀로] 버튼 복원 + 글자만 지우기 화면 밖 드래그 오류 수정 (좌표 clamp + window.mouseup 백업 핸들러)." },
   { version: "v23.22", date: "2026-05-04", desc: "📌 바로가기 — PC 클릭 시 즉시 native install prompt (이전 동작 복원). beforeinstallprompt 늦게 도착해도 1.2초 대기. 미발화 시에만 작은 toast 안내 (모달 X)." },
   { version: "v23.21", date: "2026-05-04", desc: "🎯 PDF_TABLES_PROJECT V17 핵심 인사이트 이식 — NULL/control char 제거 + 셀 폰트 size mode 자동 감지 + 셀 정렬 padding ratio 기반 (left/center/right) + 한국어 폰트명 매핑 (맑은 고딕/돋움/굴림 등)." },
@@ -4322,7 +4323,9 @@ async function exportPdfAsIdenticalDocx(opts) {
       }
       // 🎯 모자이크 격자 (사용자 아이디어 v23.12): A4 전체를 하나의 큰 표로,
       // 표/텍스트를 비율대로 셀 합치기로 배치. 격자 테두리는 모두 투명.
-      const USE_MOSAIC = !vectorHeavy && pg.canvas && tableGroups.length > 0;
+      // 🚫 모자이크 격자 OFF — 측정상 좋아도 실제 편집 시 빈 셀이 뒤덮어 사용 불가
+      // 기존 구조적 표 추출 방식 사용 (편집 친화적)
+      const USE_MOSAIC = false;
       if (USE_MOSAIC) try {
         const COLS = 30, ROWS = 60;
         const usableW = (pgNeedsLandscape ? A4_PORTRAIT_H : A4_PORTRAIT_W) - A4_MARGIN * 2;
