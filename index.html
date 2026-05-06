@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.37<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.38<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -3532,6 +3532,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v23.38", date: "2026-05-04", desc: "🎯 HTML Y 위치 정밀 보정 — PDF baseline ↔ HTML 박스 top 차이 (ascent 0.78) 보정. 글자가 PDF 와 거의 같은 줄 높이에 배치." },
   { version: "v23.37", date: "2026-05-04", desc: "🎯 HTML 100% 일치 향상 — textBox 폭 강제 제거 + white-space:nowrap (PDF 처럼 한 줄). PDF.js 의 실제 fontHeight 보존해서 정확한 pt 폰트크기 적용. 글자 위치/크기 거의 1:1." },
   { version: "v23.36", date: "2026-05-04", desc: "🧹 HTML 결과 안쪽 툴바 제거 (외곽 툴바와 중복 X) + 글자 겹침 수정 (v23.35 의 효과 그대로 유지)." },
   { version: "v23.35", date: "2026-05-04", desc: "🐛 HTML 변환 글자 겹침 수정 — 배경 이미지에서 textBoxes 영역 글자 컬럼별 위/아래 샘플링으로 제거. 표·선·배경만 남기고 그 위에 편집가능 textbox 오버레이 → 깨끗하게 한 번만 보임." },
@@ -4582,12 +4583,17 @@ async function exportPdfAsHtml() {
       const scale = pg.scale || 1.667;
       // 3) 텍스트 박스들 — PDF 실측 좌표·글자크기 그대로 사용 (canvas px → pt)
       // 100% 일치 위해: width 강제 X, white-space:nowrap, fontHeight 정확 적용
+      // Y 보정: PDF baseline ↔ HTML 박스 top — ascent ≈ 0.78h, descent ≈ 0.22h
+      //         tb.y 는 cy = baseline - fontHeight, top 으로 쓰면 너무 위. baseline - ascent ≈ baseline - 0.78h
       const textDivs = [];
       for (const tb of (pg.textBoxes || [])) {
+        const fontPx = tb.fontHeight || (tb.h * 0.87);
         const xPt = tb.x / scale;
-        const yPt = tb.y / scale;
-        // 🎯 PDF 실제 글자 높이 → pt → font-size (1pt = 1pt, 1:1 매핑)
-        const fontPt = (tb.fontHeight || tb.h * 0.85) / scale;
+        // tb.y = baseline - fontHeight. 시각 top = baseline - ascent ≈ baseline - 0.78*fontHeight.
+        // → 보정값 = (1 - 0.78) * fontHeight = 0.22 * fontHeight, 아래로 내림
+        const yPx = tb.y + fontPx * 0.22;
+        const yPt = yPx / scale;
+        const fontPt = fontPx / scale;
         const text = (tb.str || '').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         if (!text.trim()) continue;
         const color = tb.color ? `rgb(${tb.color[0]},${tb.color[1]},${tb.color[2]})` : '#000';
