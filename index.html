@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.29<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.30<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -1594,6 +1594,7 @@ async function mountPdf(file) {
       <span class="tool-sep"></span>
       <button class="tool" id="pdfToWordBtn" title="PDF 를 편집 가능한 워드(.docx) 로 변환 — 표/텍스트 자동 추출">📝 워드로 변환</button>
       <button class="tool" id="pdfToExcelBtn" title="PDF 표를 엑셀(.xlsx) 로 — 셀 단위 편집 가능">📊 엑셀로</button>
+      <button class="tool" id="pdfToHtmlBtn" title="PDF → HTML — 위치 100% 일치 + 브라우저에서 바로 글자 클릭 수정. 받는 사람도 그냥 더블클릭하면 열림" style="background:#dcd0f8;color:#3b3654;font-weight:700">🌐 HTML 로 (정확)</button>
       <span class="tool-sep"></span>
       <button class="tool" id="pdfOcrBtn" hidden style="display:none !important" aria-hidden="true">📷 OCR</button>
       <button class="tool" id="pdfUndoBtn" disabled>↶ 되돌리기</button>
@@ -1641,6 +1642,11 @@ async function mountPdf(file) {
     const pdfToExcelBtn = document.getElementById('pdfToExcelBtn');
     if (pdfToExcelBtn) pdfToExcelBtn.addEventListener('click', () => {
       try { exportPdfAsXlsx(); } catch (e) { alert('엑셀 변환 실패: ' + e.message); }
+    });
+    // PDF → HTML 변환 버튼
+    const pdfToHtmlBtn = document.getElementById('pdfToHtmlBtn');
+    if (pdfToHtmlBtn) pdfToHtmlBtn.addEventListener('click', () => {
+      try { exportPdfAsHtml(); } catch (e) { alert('HTML 변환 실패: ' + e.message); }
     });
     // OCR 버튼 (PDF 모드 전용) — 기존 hidden ocrBtn 트리거
     const pdfOcrBtn = document.getElementById('pdfOcrBtn');
@@ -3527,6 +3533,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v23.30", date: "2026-05-04", desc: "🌐 PDF → HTML 변환 추가 (사용자 제안) — 위치 100% 일치. 배경 PDF 페이지 이미지 + 절대좌표 contenteditable 텍스트박스. 브라우저에서 클릭해서 바로 수정 + [수정본 저장] 버튼. 단일 .html 파일 (이미지 base64 임베드). 받는 사람은 더블클릭만 하면 열림." },
   { version: "v23.29", date: "2026-05-04", desc: "🔄 PWA install 로직 원복 — deferred 있으면 native prompt, 없으면 OS별 안내 모달. .url 다운로드 fallback 제거 (사용자가 chrome://apps 에서 직접 관리)." },
   { version: "v23.28", date: "2026-05-04", desc: "🐛 표 잘못 분리 v2 — 짧은 세로선(꺾쇠·박스 모서리) 이 column separator 로 잘못 인식되던 문제. 표 높이의 60% 이상 되는 긴 세로선만 인정. 판교 PDF 페이지 1 신청자 유의사항 박스 단일 컬럼으로 정상 출력 확인." },
   { version: "v23.27", date: "2026-05-04", desc: "🐛 표 잘못 분리 수정 — 세로선 (검은 직선) 이 영역 안에 2개 이상 있어야 표로 인식. 단락 줄바꿈을 컬럼으로 오인하던 문제 해결." },
@@ -4488,6 +4495,138 @@ async function exportPdfAsIdenticalDocx(opts) {
 // 📊 PDF → Excel (.xlsx) — 표 PDF 면 워드보다 훨씬 자연. ExcelJS 사용 (MIT)
 // 📊 PDF → Excel — 사용자 편집 친화 (각 표를 자연스러운 셀 단위)
 // 그리드 방식은 화면 편집 불가능해서 폐기. 단순 표 추출 방식 (워드와 동일 로직).
+// 🌐 PDF → HTML — 배경 이미지 + 절대좌표 contenteditable 텍스트 박스
+// 위치 100% 일치 + 브라우저에서 바로 편집 가능 + 단일 .html 파일
+async function exportPdfAsHtml() {
+  if (currentMode !== 'pdf' || !pdfState || !pdfState.pages || pdfState.pages.length === 0) {
+    alert('PDF 모드에서만 가능합니다');
+    return;
+  }
+  showLoading('PDF → HTML 변환 중…', '페이지 렌더링');
+  try {
+    const pages = pdfState.pages;
+    const pageHtmls = [];
+    for (let pi = 0; pi < pages.length; pi++) {
+      const pg = pages[pi];
+      showLoading('PDF → HTML 변환 중…', `페이지 ${pi + 1} / ${pages.length}`);
+      // 1) 배경 이미지 (canvas → PNG base64)
+      let bgDataUrl = '';
+      if (pg.canvas) {
+        try { bgDataUrl = pg.canvas.toDataURL('image/png'); } catch (_e) {}
+      }
+      // 2) PDF pt 단위로 페이지 크기
+      const pageW = pg.pdfPageWidth, pageH = pg.pdfPageHeight;
+      const scale = pg.scale || 1.667;
+      // 3) 텍스트 박스들 — canvas px → pt
+      const textDivs = [];
+      for (const tb of (pg.textBoxes || [])) {
+        const xPt = tb.x / scale;
+        const yPt = tb.y / scale;
+        const wPt = tb.w / scale;
+        const hPt = tb.h / scale;
+        const fontSize = Math.max(6, Math.round(hPt * 0.85));
+        const text = (tb.str || '').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        if (!text.trim()) continue;
+        const color = tb.color ? `rgb(${tb.color[0]},${tb.color[1]},${tb.color[2]})` : '#000';
+        textDivs.push(
+          `<div class="tb" contenteditable="true" style="left:${xPt.toFixed(1)}pt;top:${yPt.toFixed(1)}pt;width:${wPt.toFixed(1)}pt;height:${hPt.toFixed(1)}pt;font-size:${fontSize}pt;color:${color}">${text}</div>`
+        );
+      }
+      // 4) 사용자 추가한 글씨 edit 들도 포함
+      for (const ed of (pg.edits || [])) {
+        if (ed.type !== 'text' || !ed.text) continue;
+        const xPt = ed.x;
+        const yPt = pg.pdfPageHeight - ed.y - (ed.fontSize || 12);
+        const fontSize = ed.fontSize || 12;
+        const text = (ed.text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const color = ed.color || '#000';
+        textDivs.push(
+          `<div class="tb" contenteditable="true" style="left:${xPt.toFixed(1)}pt;top:${yPt.toFixed(1)}pt;font-size:${fontSize}pt;color:${color}">${text}</div>`
+        );
+      }
+      const bgImg = bgDataUrl ? `<img class="bg" src="${bgDataUrl}" alt="page ${pi+1}">` : '';
+      pageHtmls.push(`<section class="page" style="width:${pageW}pt;height:${pageH}pt">
+${bgImg}
+${textDivs.join('\n')}
+</section>`);
+    }
+    showLoading('PDF → HTML 변환 중…', 'HTML 파일 생성');
+    const docTitle = (setBaseName ? setBaseName() : 'document') + '_편집가능';
+    const html = `<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${docTitle}</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px 12px; background: #e5e6ea; font-family: '맑은 고딕', 'Malgun Gothic', sans-serif; }
+  .toolbar { position:sticky; top:0; z-index:10; background:#fff; padding:10px 16px; border-radius:10px; box-shadow:0 2px 12px rgba(0,0,0,.12); margin:0 auto 20px; max-width:900px; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .toolbar button { background:#c7b8ee; color:#fff; border:0; padding:8px 14px; border-radius:8px; font:inherit; font-weight:700; cursor:pointer; }
+  .toolbar button:hover { background:#b8a6e0; }
+  .toolbar .info { color:#666; font-size:13px; margin-left:auto; }
+  .page {
+    background: #fff;
+    margin: 0 auto 20px;
+    position: relative;
+    box-shadow: 0 2px 12px rgba(0,0,0,.15);
+    overflow: hidden;
+  }
+  .page .bg {
+    position: absolute; top:0; left:0;
+    width: 100%; height: 100%;
+    object-fit: cover;
+    pointer-events: none;
+    user-select: none;
+  }
+  .tb {
+    position: absolute;
+    line-height: 1;
+    white-space: pre-wrap;
+    background: rgba(255,255,255,.0);
+    outline: 1px dashed transparent;
+    transition: outline-color .15s, background .15s;
+  }
+  .tb:hover { outline-color: rgba(199,184,238,.6); background: rgba(255,255,255,.55); }
+  .tb:focus { outline: 2px solid #6a4ce0; background: rgba(255,255,255,.92); z-index:5; }
+  @media print {
+    body { background:#fff; padding:0; }
+    .toolbar { display:none; }
+    .page { box-shadow:none; margin:0; page-break-after:always; }
+  }
+</style>
+</head>
+<body>
+<div class="toolbar">
+  <button onclick="window.print()">🖨️ 인쇄 (PDF 저장)</button>
+  <button onclick="downloadEdited()">💾 수정본 저장 (.html)</button>
+  <span class="info">글자를 클릭해서 바로 수정하세요. CDN & Cloud is by Solbox..</span>
+</div>
+${pageHtmls.join('\n')}
+<script>
+function downloadEdited(){
+  const html = '<!DOCTYPE html>\\n' + document.documentElement.outerHTML;
+  const blob = new Blob([html], {type:'text/html;charset=utf-8'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = ${JSON.stringify(docTitle)} + '_수정본.html';
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
+}
+</script>
+</body>
+</html>`;
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+    hideLoading();
+    downloadBytes(blob, docTitle + '.html', 'text/html;charset=utf-8');
+    log('info', `PDF → HTML 변환 완료 (${pages.length} 페이지)`);
+  } catch (e) {
+    hideLoading();
+    console.error(e);
+    alert('HTML 변환 실패: ' + (e && e.message ? e.message : e));
+  }
+}
+
 async function exportPdfAsXlsx() {
   if (currentMode !== 'pdf' || !pdfState || !pdfState.pages || pdfState.pages.length === 0) {
     alert('PDF 모드에서만 가능합니다');
