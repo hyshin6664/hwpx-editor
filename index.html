@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.31<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.32<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -3531,6 +3531,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v23.32", date: "2026-05-04", desc: "🌐 HTML 변환 결과를 편집기 안에 iframe 으로 띄움 — 다운로드 안 함. 상단 툴바: [💾 .html 저장] [🖨️ 인쇄] [📄 PDF 로 저장] [← PDF 로 돌아가기]. 사용자가 글자 클릭해서 바로 편집 가능." },
   { version: "v23.31", date: "2026-05-04", desc: "🌐 PDF 툴바 정리 — 워드/엑셀 변환 버튼 제거, [편집 가능 HTML 로 변환] 만 남김. HTML 결과: PDF 와 동일 사이즈 (@page size pt) + 툴바에 [💾 저장] [🖨️ 인쇄] [📄 PDF 로 저장] 3개 버튼." },
   { version: "v23.30", date: "2026-05-04", desc: "🌐 PDF → HTML 변환 추가 (사용자 제안) — 위치 100% 일치. 배경 PDF 페이지 이미지 + 절대좌표 contenteditable 텍스트박스. 브라우저에서 클릭해서 바로 수정 + [수정본 저장] 버튼. 단일 .html 파일 (이미지 base64 임베드). 받는 사람은 더블클릭만 하면 열림." },
   { version: "v23.29", date: "2026-05-04", desc: "🔄 PWA install 로직 원복 — deferred 있으면 native prompt, 없으면 OS별 안내 모달. .url 다운로드 fallback 제거 (사용자가 chrome://apps 에서 직접 관리)." },
@@ -4622,15 +4623,60 @@ function downloadEdited(){
 </script>
 </body>
 </html>`;
-    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
     hideLoading();
-    downloadBytes(blob, docTitle + '.html', 'text/html;charset=utf-8');
-    log('info', `PDF → HTML 변환 완료 (${pages.length} 페이지)`);
+    // 다운로드 X — 편집기 안에 iframe 으로 띄움 (사용자가 바로 편집·저장·인쇄·PDF변환)
+    showHtmlInEditor(html, docTitle);
+    log('info', `PDF → HTML 변환 완료 (${pages.length} 페이지) — 편집기에 표시`);
   } catch (e) {
     hideLoading();
     console.error(e);
     alert('HTML 변환 실패: ' + (e && e.message ? e.message : e));
   }
+}
+
+// HTML 결과를 editorHost 에 iframe 으로 표시 + 상단 툴바 (저장/인쇄/PDF)
+function showHtmlInEditor(html, docTitle) {
+  const editorHost = document.getElementById('editorHost');
+  if (!editorHost) return;
+  editorHost.innerHTML = '';
+  editorHost.style.cssText = 'display:flex;flex-direction:column;width:100%;height:100%;background:#f5f5f7;';
+  const bar = document.createElement('div');
+  bar.style.cssText = 'flex:0 0 auto;display:flex;gap:8px;padding:10px 14px;background:#fff;border-bottom:1px solid #e5e5e9;align-items:center;flex-wrap:wrap';
+  bar.innerHTML = `
+    <span style="font-weight:700;color:#3b3654;font-size:13px;margin-right:6px">📝 편집 가능 HTML</span>
+    <button class="ehtml-btn" data-act="save" style="background:#c7b8ee;color:#fff;border:0;padding:8px 14px;border-radius:8px;font:inherit;font-weight:700;cursor:pointer;font-size:13px">💾 .html 저장</button>
+    <button class="ehtml-btn" data-act="print" style="background:#a799d6;color:#fff;border:0;padding:8px 14px;border-radius:8px;font:inherit;font-weight:700;cursor:pointer;font-size:13px">🖨️ 인쇄</button>
+    <button class="ehtml-btn" data-act="pdf" style="background:#ff7c73;color:#fff;border:0;padding:8px 14px;border-radius:8px;font:inherit;font-weight:700;cursor:pointer;font-size:13px">📄 PDF 로 저장</button>
+    <button class="ehtml-btn" data-act="back" style="background:#e9eaed;color:#444;border:0;padding:8px 14px;border-radius:8px;font:inherit;font-weight:700;cursor:pointer;font-size:13px;margin-left:auto">← PDF 로 돌아가기</button>
+  `;
+  const iframe = document.createElement('iframe');
+  iframe.style.cssText = 'flex:1 1 auto;width:100%;border:0;background:#e5e6ea';
+  iframe.srcdoc = html;
+  editorHost.appendChild(bar);
+  editorHost.appendChild(iframe);
+
+  // 액션
+  bar.addEventListener('click', (e) => {
+    const btn = e.target.closest('.ehtml-btn');
+    if (!btn) return;
+    const act = btn.dataset.act;
+    const win = iframe.contentWindow;
+    const doc = iframe.contentDocument;
+    if (act === 'save') {
+      const cur = '<!DOCTYPE html>\n' + doc.documentElement.outerHTML;
+      const blob = new Blob([cur], { type: 'text/html;charset=utf-8' });
+      downloadBytes(blob, docTitle + '.html', 'text/html;charset=utf-8');
+    } else if (act === 'print' || act === 'pdf') {
+      try { win.focus(); win.print(); } catch(_) {}
+    } else if (act === 'back') {
+      // PDF 모드 다시 보이게 — 페이지 새로고침이 가장 안전
+      if (confirm('편집한 내용은 사라집니다. PDF 모드로 돌아갈까요? (저장 안 한 변경 내용 잃음)')) {
+        location.reload();
+      }
+    }
+  });
+  // 모드 표시 갱신 (저장 메뉴 등 영향)
+  window.__currentMode = 'html';
 }
 
 async function exportPdfAsXlsx() {
