@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.34<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.35<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -3531,6 +3531,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v23.35", date: "2026-05-04", desc: "🐛 HTML 변환 글자 겹침 수정 — 배경 이미지에서 textBoxes 영역 글자 컬럼별 위/아래 샘플링으로 제거. 표·선·배경만 남기고 그 위에 편집가능 textbox 오버레이 → 깨끗하게 한 번만 보임." },
   { version: "v23.34", date: "2026-05-04", desc: "🐛 페이지 깨짐 핫픽스2 — 버전 히스토리 문자열 안의 닫는 스크립트 태그 까지 제거. 이제 진짜 안 깨짐." },
   { version: "v23.32", date: "2026-05-04", desc: "🌐 HTML 변환 결과를 편집기 안에 iframe 으로 띄움 — 다운로드 안 함. 상단 툴바: [💾 .html 저장] [🖨️ 인쇄] [📄 PDF 로 저장] [← PDF 로 돌아가기]. 사용자가 글자 클릭해서 바로 편집 가능." },
   { version: "v23.31", date: "2026-05-04", desc: "🌐 PDF 툴바 정리 — 워드/엑셀 변환 버튼 제거, [편집 가능 HTML 로 변환] 만 남김. HTML 결과: PDF 와 동일 사이즈 (@page size pt) + 툴바에 [💾 저장] [🖨️ 인쇄] [📄 PDF 로 저장] 3개 버튼." },
@@ -4496,7 +4497,60 @@ async function exportPdfAsIdenticalDocx(opts) {
 // 📊 PDF → Excel (.xlsx) — 표 PDF 면 워드보다 훨씬 자연. ExcelJS 사용 (MIT)
 // 📊 PDF → Excel — 사용자 편집 친화 (각 표를 자연스러운 셀 단위)
 // 그리드 방식은 화면 편집 불가능해서 폐기. 단순 표 추출 방식 (워드와 동일 로직).
-// 🌐 PDF → HTML — 배경 이미지 + 절대좌표 contenteditable 텍스트 박스
+// 헬퍼: 캔버스에서 textBoxes 영역의 글자를 지우고 표/선/배경만 남김
+function _eraseTextFromCanvasCopy(srcCanvas, textBoxes) {
+  const cw = srcCanvas.width, ch = srcCanvas.height;
+  const out = document.createElement('canvas');
+  out.width = cw; out.height = ch;
+  const ctx = out.getContext('2d');
+  ctx.drawImage(srcCanvas, 0, 0);
+  for (const tb of textBoxes) {
+    const PAD = Math.max(2, Math.round(tb.h * 0.2));
+    const ix = Math.max(0, Math.floor(tb.x - PAD));
+    const iy = Math.max(0, Math.floor(tb.y - PAD));
+    const ex = Math.min(cw, Math.ceil(tb.x + tb.w + PAD));
+    const ey = Math.min(ch, Math.ceil(tb.y + tb.h + PAD));
+    if (ex <= ix || ey <= iy) continue;
+    const rectW = ex - ix;
+    const ctxT = Math.max(0, iy - 12);
+    const ctxB = Math.min(ch, ey + 12);
+    const ctxH = ctxB - ctxT;
+    let img;
+    try { img = ctx.getImageData(ix, ctxT, rectW, ctxH); } catch (_) { continue; }
+    const fd = img.data;
+    const relIy = iy - ctxT, relEy = ey - ctxT;
+    for (let xx = 0; xx < rectW; xx++) {
+      const bins = new Map();
+      const collect = (yStart, yEnd) => {
+        for (let yy = yStart; yy < yEnd; yy++) {
+          const p = (yy * rectW + xx) * 4;
+          const r = fd[p], g = fd[p+1], b = fd[p+2];
+          if ((r + g + b) / 3 < 80) continue;
+          const key = (r >> 3) << 16 | (g >> 3) << 8 | (b >> 3);
+          if (!bins.has(key)) bins.set(key, { count: 0, sum: [0, 0, 0] });
+          const s = bins.get(key); s.count++; s.sum[0]+=r; s.sum[1]+=g; s.sum[2]+=b;
+        }
+      };
+      collect(0, relIy); collect(relEy, ctxH);
+      let best = null;
+      bins.forEach(v => { if (!best || v.count > best.count) best = v; });
+      let mr = 255, mg = 255, mb = 255;
+      if (best && best.count > 0) {
+        mr = Math.round(best.sum[0] / best.count);
+        mg = Math.round(best.sum[1] / best.count);
+        mb = Math.round(best.sum[2] / best.count);
+      }
+      for (let yy = relIy; yy < relEy; yy++) {
+        const p = (yy * rectW + xx) * 4;
+        fd[p] = mr; fd[p+1] = mg; fd[p+2] = mb;
+      }
+    }
+    ctx.putImageData(img, ix, ctxT);
+  }
+  return out;
+}
+
+// 🌐 PDF → HTML — 배경 이미지 (글자 제거된, 표/선/배경만) + 절대좌표 contenteditable 텍스트 박스
 // 위치 100% 일치 + 브라우저에서 바로 편집 가능 + 단일 .html 파일
 async function exportPdfAsHtml() {
   if (currentMode !== 'pdf' || !pdfState || !pdfState.pages || pdfState.pages.length === 0) {
@@ -4510,10 +4564,15 @@ async function exportPdfAsHtml() {
     for (let pi = 0; pi < pages.length; pi++) {
       const pg = pages[pi];
       showLoading('PDF → HTML 변환 중…', `페이지 ${pi + 1} / ${pages.length}`);
-      // 1) 배경 이미지 (canvas → PNG base64)
+      // 1) 배경 이미지 — 글자만 지운 깨끗한 버전 (표/선/배경 보존, 위에 textbox 올림)
       let bgDataUrl = '';
       if (pg.canvas) {
-        try { bgDataUrl = pg.canvas.toDataURL('image/png'); } catch (_e) {}
+        try {
+          const cleanCanvas = _eraseTextFromCanvasCopy(pg.canvas, pg.textBoxes || []);
+          bgDataUrl = cleanCanvas.toDataURL('image/png');
+        } catch (_e) {
+          try { bgDataUrl = pg.canvas.toDataURL('image/png'); } catch (_) {}
+        }
       }
       // 2) PDF pt 단위로 페이지 크기
       const pageW = pg.pdfPageWidth, pageH = pg.pdfPageHeight;
