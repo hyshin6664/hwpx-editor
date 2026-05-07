@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.46<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.47<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -2221,9 +2221,7 @@ function attachPageInteractions(pg) {
   }
 
   function paintTextStrokesLinear(tx, ty, tw, th) {
-    // v23.41 — 컬럼별 가장 가까운 깨끗한 픽셀 찾기 + 위↔아래 선형 보간
-    //  · 표 셀 색·그라데이션·헤더 회색 모두 자연스럽게 보존
-    //  · 글자 안티앨리어싱 잔재 제거 위해 PAD 크게
+    // v23.47 — 뭉개짐 완전 방지: 주변이 복잡한 그래픽이면 건드리지 않음 (글자 남아도 OK)
     const PAD = Math.max(5, Math.min(10, Math.round(th * 0.35)));
     const ix = Math.max(0, Math.floor(tx - PAD));
     const iy = Math.max(0, Math.floor(ty - PAD));
@@ -2232,17 +2230,47 @@ function attachPageInteractions(pg) {
     const cw = ex - ix, ch = ey - iy;
     if (cw <= 0 || ch <= 0) return [255, 255, 255];
 
-    // 위/아래 25px 컨텍스트까지 (충분히 넓게 — 깨끗한 배경 픽셀 찾을 확률 ↑)
     const ctxT = Math.max(0, iy - 25);
     const ctxB = Math.min(canvas.height, ey + 25);
     const ctxH = ctxB - ctxT;
     let fullImg;
     try { fullImg = ctx.getImageData(ix, ctxT, cw, ctxH); } catch (_e) { return [255,255,255]; }
     const fd = fullImg.data;
-
-    // bbox 가 ctx 안에서의 상대 y 범위
     const relIy = iy - ctxT;
     const relEy = ey - ctxT;
+
+    // 🛡 변동성 체크 — 주변(위·아래) 픽셀이 복잡한 색이면 건드리지 않음
+    // 본문 단락(균일 배경) ↔ 로고/컬러 그래픽(복잡) 구분
+    function colorVariance() {
+      let cnt = 0, sR=0, sG=0, sB=0, qR=0, qG=0, qB=0;
+      const sample = (yS, yE) => {
+        for (let yy = yS; yy < yE; yy++) {
+          for (let xx = 0; xx < cw; xx += 2) {  // 2픽셀 간격 샘플 (속도)
+            const p = (yy * cw + xx) * 4;
+            const r = fd[p], g = fd[p+1], b = fd[p+2];
+            // 어두운 글자 픽셀 제외 (배경만 보고 싶음)
+            if ((r+g+b)/3 < 100) continue;
+            sR += r; sG += g; sB += b;
+            qR += r*r; qG += g*g; qB += b*b;
+            cnt++;
+          }
+        }
+      };
+      sample(0, relIy);
+      sample(relEy, ctxH);
+      if (cnt < 10) return 999;  // 데이터 부족 = 위험 = skip
+      const aR = sR/cnt, aG = sG/cnt, aB = sB/cnt;
+      const vR = Math.max(0, qR/cnt - aR*aR);
+      const vG = Math.max(0, qG/cnt - aG*aG);
+      const vB = Math.max(0, qB/cnt - aB*aB);
+      return Math.sqrt(vR + vG + vB);
+    }
+    const varStd = colorVariance();
+    // 변동성 60 이상 = 복잡한 그래픽/로고 → 건드리지 않고 그대로 둠
+    if (varStd > 60) {
+      console.debug('paintText skip — complex bg, var=', varStd.toFixed(1));
+      return [255, 255, 255];
+    }
 
     // "어두운/글자" 픽셀 판정 — 평균 < 100 OR 채도 높고 어두운
     function isDark(r, g, b) {
@@ -3713,6 +3741,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v23.47", date: "2026-05-04", desc: "🛡 글자 지우기 뭉개짐 완전 방지 — 주변 색 변동성 자동 측정. 본문(균일 배경) → 깨끗하게 지움. 로고·컬러 그래픽(복잡 배경) → 건드리지 않음 (글자 남아도 뭉개진 줄보다 낫다는 원칙)." },
   { version: "v23.46", date: "2026-05-04", desc: "🚨 페이지 멈춤 긴급 수정 — OpenCV.js 자동 백그라운드 로드 제거 (WASM 컴파일이 메인 스레드 막아 '응답 없는 페이지' 발생). 글자 지우기는 기존 선형보간 알고리즘 (충분히 좋음). SW 캐시 v6→v7 강제 갱신." },
   { version: "v23.45", date: "2026-05-04", desc: "🚨 Self-heal — 페이지 5초 후에도 loading 멈춰 있으면 자동 SW 제거 + 캐시 비움 + 새로고침. 구버전 SW 가 stale HTML 서빙하는 stuck 케이스 자가 복구. 한 세션당 1회만 실행." },
   { version: "v23.44", date: "2026-05-04", desc: "🐛 열기 버튼·드래그 먹통 수정 — 시작 직후 loading 잔재 강제 제거 + SW 캐시 v6 으로 갱신 (새로고침 시 무조건 새 버전)." },
