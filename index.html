@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.71<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.72<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -2407,11 +2407,13 @@ function attachPageInteractions(pg) {
     }
     // 4) PRE-FILL 제거 — 각 mask 픽셀이 가장 가까운 깨끗한 이웃에서 색 가져오게 Telea 만으로 처리
     //   사용자 요청: 평균 X, 미세하게 픽셀 단위로 채움
-    // 5) Telea — 100x 컨셉 (미세 처리). 영역 클수록 SCALE 낮추되 항상 픽셀 수 ~1M 유지
-    //   영역 px → SCALE: 작은 영역 50x, 큰 영역도 합리적 한도
-    //   목표: SCALE^2 * totalPx ≈ 1M (Telea 처리 한계 ~1-2초)
+    // 5) Telea — 사용자 요청: 최대 100x 확대
+    //   매우 작은 영역 (~100px) → 100x (실제 100배)
+    //   중간 (~10000px) → 10x
+    //   큰 (~1M px) → 1x
+    //   목표 처리 픽셀 ~1M (Telea 1-3초)
     const totalPx = W * H;
-    const SCALE = Math.max(2, Math.min(50, Math.floor(Math.sqrt(1_000_000 / totalPx))));
+    const SCALE = Math.max(1, Math.min(100, Math.floor(Math.sqrt(1_000_000 / totalPx))));
     if (SCALE > 1) {
       const W2 = W * SCALE, H2 = H * SCALE;
       // bilinear 업스케일을 OffscreenCanvas 로 (브라우저 GPU 활용)
@@ -4174,6 +4176,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v23.72", date: "2026-05-07", desc: "🔍 글자 지우기 SCALE 최대 100배 (사용자 요청 한도). 매우 작은 글자(~100px) 100x, 중간 10x, 큰 1-3x. 최대한 미세하게." },
   { version: "v23.71", date: "2026-05-07", desc: "🩹 글자 지우기 — 사각형 마스크 X. 실제 어두운 글씨 픽셀만 마스킹 (1px dilation 으로 AA 흡수). 배경 픽셀은 원본 그대로 → 뭉개짐 절대 없음. 글자 자획만 미세하게 inpaint." },
   { version: "v23.70", date: "2026-05-07", desc: "🔍 글자 지우기 — 100x 컨셉 강화 (사용자 요청). 영역 크기에 반비례하는 SCALE (sqrt(1M/totalPx), 최대 50x). 작은 영역은 진짜 50배 확대까지 → 미세 처리. Telea radius 도 자동 조정 (최대 12)." },
   { version: "v23.69", date: "2026-05-07", desc: "🔍 글자 지우기 — 사용자 요청 '100x 컨셉' 적용. 영역 작을수록 8x → 4x → 3x → 2x → 1x adaptive bilinear 확대 후 Telea 처리. 작은 글자도 미세하게. 시간 좀 걸려도 부드럽게." },
