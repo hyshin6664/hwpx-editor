@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.83<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.84<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -2429,7 +2429,7 @@ function attachPageInteractions(pg) {
       for (let i = 0; i < mask.length; i++) {
         if (!mask[i]) continue;
         const p = i * 4;
-        if ((fd[p] + fd[p+1] + fd[p+2]) / 3 > 170) {  // 170 이상 = 매우 적극적 snap (잔재 가장자리까지)
+        if ((fd[p] + fd[p+1] + fd[p+2]) / 3 > 140) {  // 140 이상 = 끝까지 적극적 snap
           fd[p] = 255; fd[p+1] = 255; fd[p+2] = 255;
         }
       }
@@ -4321,6 +4321,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v23.84", date: "2026-05-08", desc: "🩹 snap 170→140 (한 단계 더 적극적). 잔재 6.76% → 더 적게 목표." },
   { version: "v23.83", date: "2026-05-08", desc: "🩹 white snap 임계값 200→170 (적극적). 분석 결과 180-199 범위 잔재 4% → snap 으로 제거." },
   { version: "v23.82", date: "2026-05-08", desc: "🩹 white snap 완화 — 비-마스크 50%+ 흰색이면 200 이상 픽셀 모두 순백 강제. 회색 잔재 추가 감소." },
   { version: "v23.81", date: "2026-05-08", desc: "🩹 mask 임계값 215 (AA 더 잡음) + white snap 220→ 220 (≥220 흰배경 snap). 회색 잔재 추가 감소." },
