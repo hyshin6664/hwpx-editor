@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.43<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.44<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -1151,6 +1151,10 @@ function showLoading(text, sub) {
   loading.classList.remove("hidden");
 }
 function hideLoading() { loading.classList.add("hidden"); }
+// 🛡 방어: 페이지 로드 직후 loading 화면 잔재 강제 제거 (어떤 이유로든 못 가려진 케이스)
+window.addEventListener('DOMContentLoaded', () => {
+  setTimeout(() => { try { loading.classList.add("hidden"); } catch(_){} }, 300);
+});
 function hideWelcome() { welcome.classList.add("hidden"); }
 
 function setBaseName() {
@@ -3693,6 +3697,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v23.44", date: "2026-05-04", desc: "🐛 열기 버튼·드래그 먹통 수정 — 시작 직후 loading 잔재 강제 제거 + SW 캐시 v6 으로 갱신 (새로고침 시 무조건 새 버전)." },
   { version: "v23.43", date: "2026-05-04", desc: "🚀 rhwp(한글) 엔진도 백그라운드 로드 (사용자 요청) — 시작 시 'rhwp 받는 중…' 화면 제거. UI 즉시 사용. .hwp/.hwpx 열 때만 (아직 안 받아졌으면) 짧게 대기. PDF/DOCX 사용자는 영향 0." },
   { version: "v23.42", date: "2026-05-04", desc: "🎨 OpenCV.js Telea inpainting 백그라운드 로드 (사용자 제안) — 페이지 떠 있는 동안 조용히 받음 (idle callback). 글자 지우기 시 OpenCV 준비됐으면 Telea (Photoshop content-aware fill 급), 아니면 선형보간. 첫 화면 로드 영향 0." },
   { version: "v23.41", date: "2026-05-04", desc: "🩹 글자만 지우기 — 컬럼별 위↔아래 가장 가까운 깨끗한 픽셀 찾기 + 선형 보간 (그라데이션·표 헤더 회색·배경색 자연스럽게 보존). PAD 5~10px 동적, 어두운 글자 픽셀 제외. 🔍 PDF 확대/축소 추가 — 툴바 [🔍−][100%][🔍+] + Ctrl+휠 + Ctrl+0/+/-." },
