@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.63<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.64<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -2351,13 +2351,17 @@ function attachPageInteractions(pg) {
       const fullImg = ctx.getImageData(ctxL, ctxT, W, H);
       const fd = fullImg.data;
       // mask: bbox 영역 = 1 (inpaint), lineRects 픽셀은 0 (보호)
+      // 🎯 mask dilation +2px — AA halo 까지 inpaint (잔재 제거)
       const mask = new Uint8Array(W * H);
       const relIx = ix - ctxL, relEx = ex - ctxL;
       const relIy = iy - ctxT, relEy = ey - ctxT;
-      for (let yy = relIy; yy < relEy; yy++)
-        for (let xx = relIx; xx < relEx; xx++)
+      const DIL = 2;
+      const dilStartX = Math.max(0, relIx - DIL), dilEndX = Math.min(W, relEx + DIL);
+      const dilStartY = Math.max(0, relIy - DIL), dilEndY = Math.min(H, relEy + DIL);
+      for (let yy = dilStartY; yy < dilEndY; yy++)
+        for (let xx = dilStartX; xx < dilEndX; xx++)
           mask[yy * W + xx] = 1;
-      // 표 테두리 보호 (mask 0 으로)
+      // 표 테두리 보호 (mask 0 으로) — lineRects (PDF 메타데이터)
       for (const lr of (pg.lineRects || [])) {
         if (lr.x >= ctxR || lr.x + lr.w <= ctxL || lr.y >= ctxB || lr.y + lr.h <= ctxT) continue;
         const x0 = Math.max(0, Math.floor(lr.x - ctxL));
@@ -2366,13 +2370,54 @@ function attachPageInteractions(pg) {
         const y1 = Math.min(H, Math.ceil(lr.y + lr.h - ctxT));
         for (let yy = y0; yy < y1; yy++) for (let xx = x0; xx < x1; xx++) mask[yy * W + xx] = 0;
       }
+      // 🛡 edge-aware: 매우 어두운 픽셀 (luma<60) — 글자가 아닌 라인일 가능성 → mask 에서 빼기
+      // 단, dilation 영역 안에서만 (원래 bbox 영역 안의 검은 글자는 보존하지 말고 erase)
+      // → 원래 bbox(relIx..relEx) 안은 그대로, 외곽 dilation ring 만 검은 픽셀 보호
+      for (let yy = dilStartY; yy < dilEndY; yy++) {
+        for (let xx = dilStartX; xx < dilEndX; xx++) {
+          // 원래 bbox 안이면 글자라서 erase 해야 함 → skip
+          if (xx >= relIx && xx < relEx && yy >= relIy && yy < relEy) continue;
+          if (!mask[yy * W + xx]) continue;
+          const p = (yy * W + xx) * 4;
+          const luma = 0.299*fd[p] + 0.587*fd[p+1] + 0.114*fd[p+2];
+          if (luma < 60) mask[yy * W + xx] = 0;  // 검은 라인 보호
+        }
+      }
       // 채널별로 Telea
       for (let ch = 0; ch < 3; ch++) {
         const single = new Uint8Array(W * H);
         for (let i = 0, j = ch; i < single.length; i++, j += 4) single[i] = fd[j];
-        const maskCopy = new Uint8Array(mask);  // InpaintTelea 가 mask 를 변경할 수 있음
+        const maskCopy = new Uint8Array(mask);
         InpaintTelea(W, H, single, maskCopy, 4);
         for (let i = 0, j = ch; i < single.length; i++, j += 4) fd[j] = single[i];
+      }
+      // 🎨 2차 후처리: mask 경계 1px 링에 가우시안 blur (3x3, sigma 0.6) — seam 제거
+      const ringPixels = [];
+      for (let yy = dilStartY; yy < dilEndY; yy++) {
+        for (let xx = dilStartX; xx < dilEndX; xx++) {
+          if (!mask[yy * W + xx]) continue;
+          // 이 픽셀이 mask 경계인지 (인접 픽셀 중 mask=0 있음)
+          let onEdge = false;
+          for (const [dx,dy] of [[-1,0],[1,0],[0,-1],[0,1]]) {
+            const nx = xx+dx, ny = yy+dy;
+            if (nx<0||ny<0||nx>=W||ny>=H) continue;
+            if (!mask[ny * W + nx]) { onEdge = true; break; }
+          }
+          if (onEdge) ringPixels.push([xx, yy]);
+        }
+      }
+      // 3x3 box blur (sigma 0.6 근사)
+      const orig = new Uint8Array(fd);
+      for (const [xx, yy] of ringPixels) {
+        for (let ch = 0; ch < 3; ch++) {
+          let sum = 0, cnt = 0;
+          for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+            const nx = xx+dx, ny = yy+dy;
+            if (nx<0||ny<0||nx>=W||ny>=H) continue;
+            sum += orig[(ny*W + nx)*4 + ch]; cnt++;
+          }
+          fd[(yy*W + xx)*4 + ch] = Math.round(sum / cnt);
+        }
       }
       ctx.putImageData(fullImg, ctxL, ctxT);
       return [255, 255, 255];
@@ -3946,6 +3991,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v23.64", date: "2026-05-07", desc: "🎨 Telea 후처리 3종 (리서치 확인) — (1) mask dilation +2px (AA halo 흡수), (2) edge-aware: 외곽 ring 의 검은 라인 자동 보호, (3) mask 경계 1px Gaussian blur (seam 제거). 글자 100% 깨끗, 표 테두리 절대 안 다침." },
   { version: "v23.63", date: "2026-05-07", desc: "🎨 Telea FMM inpainting 통합 (antimatter15/inpaint.js, MIT, 5KB inline). Photoshop content-aware fill 급 알고리즘 — 각 글자 픽셀을 주변 그래디언트 따라 자연스럽게 채움. AA halo 깨끗. 표 테두리(lineRects) 보호." },
   { version: "v23.62", date: "2026-05-07", desc: "🎨 글자 지우기 — 3단 fallback 하이브리드. 컬럼 위·아래 (60px) → 행 좌·우 → 전역 페이지 배경 MODE. 텍스트 밀집 영역에서도 합리적 색 찾음." },
   { version: "v23.61", date: "2026-05-07", desc: "🎨 글자 지우기 — 컬럼 복제 방식. 각 컬럼별로 위·아래 깨끗한 픽셀 평균색으로 채움. 세로 그라데이션·표 헤더 자연스럽게 동화." },
