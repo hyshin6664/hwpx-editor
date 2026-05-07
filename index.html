@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.54<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.55<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -2295,46 +2295,45 @@ function attachPageInteractions(pg) {
       return isLine[ry * ctxW + rx] === 1;
     }
 
-    // 픽셀 단위 inpaint — 각 어두운 (글자) 픽셀이 가장 가까운 밝은 (배경) 픽셀 색을 가져옴
-    //  · 글자 획만 살짝 지우고 그 자리만 채움
-    //  · 배경·표 테두리·AA 잔재 모두 그대로 유지
-    function findNearestBg(xx, yy) {
-      // 나선 ring 스캔, 최대 반경 10
-      for (let radius = 1; radius <= 10; radius++) {
-        // ring 의 4면 스캔 (위, 아래, 좌, 우 가장자리)
-        for (let i = -radius; i <= radius; i++) {
-          // 위 (y - radius) + 아래 (y + radius)
-          for (const dy of [-radius, radius]) {
-            const nx = xx + i, ny = yy + dy;
-            if (nx < 0 || ny < 0 || nx >= ctxW || ny >= ctxH) continue;
-            if (isLinePixelRel(nx, ny)) continue;
-            const np = (ny * ctxW + nx) * 4;
-            const nr = fd[np], ng = fd[np+1], nb = fd[np+2];
-            if ((nr + ng + nb) / 3 >= 150) return [nr, ng, nb];
-          }
-          // 좌 (x - radius) + 우 (x + radius), 가운데 행만
-          for (const dx of [-radius, radius]) {
-            const nx = xx + dx, ny = yy + i;
-            if (nx < 0 || ny < 0 || nx >= ctxW || ny >= ctxH) continue;
-            if (isLinePixelRel(nx, ny)) continue;
-            const np = (ny * ctxW + nx) * 4;
-            const nr = fd[np], ng = fd[np+1], nb = fd[np+2];
-            if ((nr + ng + nb) / 3 >= 150) return [nr, ng, nb];
-          }
-        }
-      }
-      return [255, 255, 255];
-    }
-    // bbox 영역의 어두운 픽셀만 inpaint (표 테두리 제외)
+    // 행 단위 MODE fill — 각 행의 좌·우 진짜 배경 (밝기 > 200) MODE 색으로 채움
+    //  · 표 테두리 (isLine) 픽셀 보호
+    //  · 채울 영역도 bbox 안의 어두운 (글자) 픽셀만 → 배경은 그대로
     for (let yy = relIy; yy < relEy; yy++) {
+      const rowOff = yy * ctxW * 4;
+      const bins = new Map();
+      const collect = (xS, xE) => {
+        for (let xx = xS; xx < xE; xx++) {
+          if (isLinePixelRel(xx, yy)) continue;
+          const p = rowOff + xx * 4;
+          const r = fd[p], g = fd[p+1], b = fd[p+2];
+          if ((r+g+b)/3 < 200) continue;  // 진짜 밝은 배경만 (AA 회색 제외)
+          const key = (r >> 4) << 8 | (g >> 4) << 4 | (b >> 4);
+          if (!bins.has(key)) bins.set(key, { count: 0, sum: [0,0,0] });
+          const slot = bins.get(key);
+          slot.count++;
+          slot.sum[0] += r; slot.sum[1] += g; slot.sum[2] += b;
+        }
+      };
+      collect(0, relIx);
+      collect(relEx, ctxW);
+      let best = null;
+      bins.forEach(v => { if (!best || v.count > best.count) best = v; });
+      let mr, mg, mb;
+      if (best && best.count > 0) {
+        mr = Math.round(best.sum[0] / best.count);
+        mg = Math.round(best.sum[1] / best.count);
+        mb = Math.round(best.sum[2] / best.count);
+      } else {
+        // 좌우에 진짜 밝은 배경 없으면 흰색
+        mr = mg = mb = 255;
+      }
+      // 채움: 어둡거나 AA 회색 (< 200) 픽셀만 교체. 표 테두리는 보호.
       for (let xx = relIx; xx < relEx; xx++) {
-        if (isLinePixelRel(xx, yy)) continue;  // 🛡 표 테두리 보호
-        const p = (yy * ctxW + xx) * 4;
+        if (isLinePixelRel(xx, yy)) continue;
+        const p = rowOff + xx * 4;
         const r = fd[p], g = fd[p+1], b = fd[p+2];
-        // 어둡거나 (글자 본체) AA 회색 (잔재) 까지 처리 — 평균 < 200
-        if ((r + g + b) / 3 >= 200) continue;
-        const [nr, ng, nb] = findNearestBg(xx, yy);
-        fd[p] = nr; fd[p+1] = ng; fd[p+2] = nb;
+        if ((r + g + b) / 3 >= 200) continue;  // 이미 밝은 배경은 건드리지 않음
+        fd[p] = mr; fd[p+1] = mg; fd[p+2] = mb;
       }
     }
     ctx.putImageData(fullImg, ctxL, ctxT);
@@ -3776,6 +3775,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v23.55", date: "2026-05-04", desc: "🔄 글자 지우기 — 행-MODE 방식 + 어두운 픽셀만 교체 + AA 임계값 200 (강화). 박스 단위 fill 안 하고 글자 픽셀만 행 배경색으로 교체. 표 테두리 보호 유지." },
   { version: "v23.54", date: "2026-05-04", desc: "🩹 글자 지우기 — 픽셀 단위 inpaint 로 변경 (사용자 피드백). 각 어두운 글자 획 픽셀이 가장 가까운 밝은 배경 픽셀 색을 가져옴. 박스 단위 fill X — 글자 획만 지움. 배경·테두리·다른 색 모두 그대로 유지." },
   { version: "v23.53", date: "2026-05-04", desc: "🐛 확대 시 글자 지우기 드래그 박스 위치 어긋나던 문제 수정 — overlay 의 transform:scale 보정 (시각 좌표 ÷ 줌). 200% 확대해도 모서리까지 정확히 잡힘." },
   { version: "v23.52", date: "2026-05-04", desc: "🎯 글자 vs 표 테두리 정확 구분 — 직선 감지 시 'bbox 밖으로 양쪽 뻗는' 조건 추가. 글자 자획(bbox 안에서만 존재) 은 직선으로 안 봄 → 깨끗하게 지워짐. 표 테두리(영역 통과) 만 보호." },
