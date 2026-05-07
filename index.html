@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.65<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.66<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -2331,6 +2331,99 @@ function attachPageInteractions(pg) {
     return [255, 255, 255];
   }
 
+  // 🎨 Batch inpaint — 모든 textBox 영역을 한 번에 mask 로 묶어 inpaint
+  //   인접 텍스트가 배경 후보로 오염되는 문제 해결
+  //   글자 크기에 따라 dilation/radius adaptive
+  function paintTextStrokesBatch(intersections) {
+    if (!intersections || intersections.length === 0) return;
+    // 1) 통합 영역 계산
+    let xmin = canvas.width, ymin = canvas.height, xmax = 0, ymax = 0;
+    let totalH = 0;
+    for (const it of intersections) {
+      xmin = Math.min(xmin, it.x);
+      ymin = Math.min(ymin, it.y);
+      xmax = Math.max(xmax, it.x + it.w);
+      ymax = Math.max(ymax, it.y + it.h);
+      totalH += it.h;
+    }
+    const avgH = totalH / intersections.length;
+    const _smallTxt = avgH < 18, _bigTxt = avgH > 30;
+    const TELEA_RADIUS = _smallTxt ? 3 : (_bigTxt ? 6 : 4);
+    const DIL_PX = _smallTxt ? 1 : (_bigTxt ? 3 : 2);
+    const PAD = _smallTxt ? 4 : (_bigTxt ? 10 : 6);
+
+    const ix = Math.max(0, Math.floor(xmin - PAD));
+    const iy = Math.max(0, Math.floor(ymin - PAD));
+    const ex = Math.min(canvas.width, Math.ceil(xmax + PAD));
+    const ey = Math.min(canvas.height, Math.ceil(ymax + PAD));
+    // 컨텍스트 (Telea 가 모든 면에 known 영역 필요)
+    const ctxL = Math.max(0, ix - 12);
+    const ctxR = Math.min(canvas.width, ex + 12);
+    const ctxT = Math.max(0, iy - 8);
+    const ctxB = Math.min(canvas.height, ey + 8);
+    const W = ctxR - ctxL, H = ctxB - ctxT;
+    if (W <= 6 || H <= 6) return;
+
+    const fullImg = ctx.getImageData(ctxL, ctxT, W, H);
+    const fd = fullImg.data;
+    const mask = new Uint8Array(W * H);
+
+    // 2) 각 textBox 영역 + dilation 을 mask 에 마킹
+    for (const it of intersections) {
+      const lx = Math.max(0, Math.floor(it.x - DIL_PX - ctxL));
+      const ly = Math.max(0, Math.floor(it.y - DIL_PX - ctxT));
+      const rx = Math.min(W, Math.ceil(it.x + it.w + DIL_PX - ctxL));
+      const ry = Math.min(H, Math.ceil(it.y + it.h + DIL_PX - ctxT));
+      for (let yy = ly; yy < ry; yy++)
+        for (let xx = lx; xx < rx; xx++)
+          mask[yy * W + xx] = 1;
+    }
+    // 3) 표 테두리 (lineRects) 보호
+    for (const lr of (pg.lineRects || [])) {
+      if (lr.x >= ctxR || lr.x + lr.w <= ctxL || lr.y >= ctxB || lr.y + lr.h <= ctxT) continue;
+      const x0 = Math.max(0, Math.floor(lr.x - ctxL));
+      const x1 = Math.min(W, Math.ceil(lr.x + lr.w - ctxL));
+      const y0 = Math.max(0, Math.floor(lr.y - ctxT));
+      const y1 = Math.min(H, Math.ceil(lr.y + lr.h - ctxT));
+      for (let yy = y0; yy < y1; yy++) for (let xx = x0; xx < x1; xx++) mask[yy * W + xx] = 0;
+    }
+    // 4) Telea 채널별 inpaint
+    for (let ch = 0; ch < 3; ch++) {
+      const single = new Uint8Array(W * H);
+      for (let i = 0, j = ch; i < single.length; i++, j += 4) single[i] = fd[j];
+      const maskCopy = new Uint8Array(mask);
+      InpaintTelea(W, H, single, maskCopy, TELEA_RADIUS);
+      for (let i = 0, j = ch; i < single.length; i++, j += 4) fd[j] = single[i];
+    }
+    // 5) 경계 1px Gaussian blur (seam 제거)
+    const ringPixels = [];
+    for (let yy = 0; yy < H; yy++) {
+      for (let xx = 0; xx < W; xx++) {
+        if (!mask[yy * W + xx]) continue;
+        let onEdge = false;
+        for (const [dx,dy] of [[-1,0],[1,0],[0,-1],[0,1]]) {
+          const nx = xx+dx, ny = yy+dy;
+          if (nx<0||ny<0||nx>=W||ny>=H) continue;
+          if (!mask[ny * W + nx]) { onEdge = true; break; }
+        }
+        if (onEdge) ringPixels.push([xx, yy]);
+      }
+    }
+    const orig = new Uint8Array(fd);
+    for (const [xx, yy] of ringPixels) {
+      for (let ch = 0; ch < 3; ch++) {
+        let sum = 0, cnt = 0;
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+          const nx = xx+dx, ny = yy+dy;
+          if (nx<0||ny<0||nx>=W||ny>=H) continue;
+          sum += orig[(ny*W + nx)*4 + ch]; cnt++;
+        }
+        fd[(yy*W + xx)*4 + ch] = Math.round(sum / cnt);
+      }
+    }
+    ctx.putImageData(fullImg, ctxL, ctxT);
+  }
+
   function paintTextStrokesLinear(tx, ty, tw, th) {
     // 🎨 v23.63 — Telea FMM inpainting (antimatter15/inpaint.js, MIT)
     //   각 글자 픽셀을 주변 그래디언트 따라 자연스럽게 채움. AA halo 까지 깨끗.
@@ -2656,10 +2749,20 @@ function attachPageInteractions(pg) {
       if (intersections.length === 0) return;
       ctx.save();
       const textErases = [];
-      for (const it of intersections) {
-        const tcolor = paintTextStrokesOnly(it.x, it.y, it.w, it.h); // 교집합 영역의 글자 획만
-        const pc = toPdfCoords(it.x, it.y, it.w, it.h);
-        textErases.push({ ...pc, color: tcolor });
+      // 🎨 v23.66 — 모든 textBox 영역을 한 번에 batch inpaint (인접 텍스트 오염 방지)
+      try {
+        paintTextStrokesBatch(intersections);
+        for (const it of intersections) {
+          const pc = toPdfCoords(it.x, it.y, it.w, it.h);
+          textErases.push({ ...pc, color: [255,255,255] });
+        }
+      } catch (e) {
+        console.warn('batch 실패, 개별 fallback:', e);
+        for (const it of intersections) {
+          paintTextStrokesOnly(it.x, it.y, it.w, it.h);
+          const pc = toPdfCoords(it.x, it.y, it.w, it.h);
+          textErases.push({ ...pc, color: [255,255,255] });
+        }
       }
       ctx.restore();
       const edit = { type: 'erase-text', boxes: textErases, _displayPx: { intersections, x, y, w, h } };
@@ -3998,6 +4101,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v23.66", date: "2026-05-07", desc: "🎨 글자 지우기 — Batch inpaint 모드. 모든 textBox 영역을 한 번에 mask 로 묶어 Telea 한 번 호출. 인접 텍스트가 배경 후보로 오염되던 문제 해결 (이전엔 박스마다 따로 inpaint → 옆 텍스트 dark 픽셀이 fill 색에 섞임)." },
   { version: "v23.65", date: "2026-05-07", desc: "🎯 Telea adaptive 파라미터 — 글자 크기별로 radius/dilation/PAD 자동 조정. 작은 글자(h<18) r=3 dil=1, 보통 r=4 dil=2, 큰 헤더(h>30) r=6 dil=3. 한자/제목 자획에 더 정확하게 대응." },
   { version: "v23.64", date: "2026-05-07", desc: "🎨 Telea 후처리 3종 (리서치 확인) — (1) mask dilation +2px (AA halo 흡수), (2) edge-aware: 외곽 ring 의 검은 라인 자동 보호, (3) mask 경계 1px Gaussian blur (seam 제거). 글자 100% 깨끗, 표 테두리 절대 안 다침." },
   { version: "v23.63", date: "2026-05-07", desc: "🎨 Telea FMM inpainting 통합 (antimatter15/inpaint.js, MIT, 5KB inline). Photoshop content-aware fill 급 알고리즘 — 각 글자 픽셀을 주변 그래디언트 따라 자연스럽게 채움. AA halo 깨끗. 표 테두리(lineRects) 보호." },
