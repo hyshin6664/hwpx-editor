@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.80<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.81<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -2350,7 +2350,7 @@ function attachPageInteractions(pg) {
       for (let xx = 0; xx < W; xx++) {
         const p = (yy * W + xx) * 4;
         const r = fd[p], g = fd[p+1], b = fd[p+2];
-        if ((r + g + b) / 3 < 200) { mask[yy * W + xx] = 1; maskCount++; }
+        if ((r + g + b) / 3 < 215) { mask[yy * W + xx] = 1; maskCount++; }
       }
     }
     if (maskCount > W * H * 0.8) {
@@ -2429,7 +2429,7 @@ function attachPageInteractions(pg) {
       for (let i = 0; i < mask.length; i++) {
         if (!mask[i]) continue;
         const p = i * 4;
-        if ((fd[p] + fd[p+1] + fd[p+2]) / 3 > 230) {
+        if ((fd[p] + fd[p+1] + fd[p+2]) / 3 > 220) {
           fd[p] = 255; fd[p+1] = 255; fd[p+2] = 255;
         }
       }
@@ -4321,6 +4321,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v23.81", date: "2026-05-08", desc: "🩹 mask 임계값 215 (AA 더 잡음) + white snap 220→ 220 (≥220 흰배경 snap). 회색 잔재 추가 감소." },
   { version: "v23.80", date: "2026-05-08", desc: "🩹 글자 지우기 — skip 임계값 50→80% 완화. 빽빽 자획도 대부분 처리. 회색 잔재 17% → 더 적게 (자체 측정 후 보고)." },
   { version: "v23.79", date: "2026-05-08", desc: "⚡ 글자 지우기 — SCALE 100→16 (속도 ↑↑), 임계값 150→200 (AA halo 까지). 50% skip 룰로 밀집 자획 보호. 박스당 200ms, 50개 = 10초 이내." },
   { version: "v23.78", date: "2026-05-08", desc: "🚦 글자 지우기 영역 제한 (사용자 요청) — 한 번에 최대 50개 textBox. 초과 시 안내 알림. 3초 안에 끝나도록 보장. 작게 여러 번 드래그하는 워크플로우." },
