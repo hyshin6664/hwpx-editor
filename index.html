@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.59<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.60<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -2296,13 +2296,17 @@ function attachPageInteractions(pg) {
         // 좌우에 진짜 밝은 배경 없으면 흰색
         mr = mg = mb = 255;
       }
-      // 채움: 글자 본체+AA halo (< 235) 다 교체. 거의 흰 픽셀만 남김. 표 테두리는 보호.
-      // sample 임계값(200)은 진짜 배경만 모드, replace 임계값(235)은 더 공격적 — AA 잔재 제거
+      // 채움: 배경 MODE 보다 어두운 픽셀만 교체 — 배경에 따라 스마트 임계값
+      // 흰 배경 (MODE ~250): MODE-30=220 미만 = 글자/AA → 교체
+      // 회색 헤더 (MODE ~200): MODE-30=170 미만 = 글자 → 교체. 회색 자체 보존
+      const modeBrightness = (mr + mg + mb) / 3;
+      const replaceThreshold = modeBrightness - 30;
       for (let xx = relIx; xx < relEx; xx++) {
         if (isLinePixelRel(xx, yy)) continue;
         const p = rowOff + xx * 4;
         const r = fd[p], g = fd[p+1], b = fd[p+2];
-        if ((r + g + b) / 3 >= 235) continue;  // 거의 흰색만 보존, AA halo 까지 교체
+        const avg = (r + g + b) / 3;
+        if (avg >= replaceThreshold) continue;  // 배경 색에 가까우면 보존
         fd[p] = mr; fd[p+1] = mg; fd[p+2] = mb;
       }
     }
@@ -3745,6 +3749,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v23.60", date: "2026-05-07", desc: "🩹 글자 지우기 — 스마트 임계값 (배경 MODE - 30). 흰 배경에선 220 미만 교체, 회색 헤더에선 170 미만 교체. 회색 셀 자체는 보존하면서 글자만 깨끗히." },
   { version: "v23.59", date: "2026-05-07", desc: "🩹 글자 지우기 — canvas 픽셀 직선 감지 제거 (false positive 원인). PDF 메타데이터 lineRects 만으로 표 테두리 보호. 글자 자획이 라인으로 잘못 마킹되지 않음 → 깨끗하게 지워짐." },
   { version: "v23.58", date: "2026-05-07", desc: "🛡 표 테두리 감지 정확도 ↑ — 가는 선 (좌·우 인접 픽셀 밝음) 조건 추가. 글자 자획이 false positive 로 라인 마킹되던 문제 해결 → 글자 더 깨끗히 지워짐. 자체 테스트 잔재 14% → 목표 1% 미만." },
   { version: "v23.57", date: "2026-05-07", desc: "🩹 글자 지우기 — 임계값 분리 (sample 200, replace 235). 진짜 배경만 모드 색 결정 + AA halo 까지 공격적 제거 → 회색 잔재 거의 안 남음." },
