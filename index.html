@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.57<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.58<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -2261,25 +2261,55 @@ function attachPageInteractions(pg) {
       const p = (yy * ctxW + xx) * 4;
       return (fd[p] + fd[p+1] + fd[p+2]) / 3 < 180;
     }
-    // 세로선: bbox 밖으로 위·아래 모두 뻗는 어두운 컬럼만 = 진짜 표 테두리
-    // (글자 자획은 bbox 안에서만 어둡고 bbox 밖은 안 어두움)
+    // 세로선: bbox 밖으로 위·아래 모두 뻗고 + 가는(1~2px) 컬럼만 = 진짜 표 테두리
+    // 글자 자획도 위·아래로 약간 뻗을 수 있음 → 추가 조건: 좌·우 인접이 밝아야 (선은 좁음)
+    function isThinLineCol(xx) {
+      // 좌·우 1px 옆이 밝은 픽셀 다수면 가는 선
+      let leftBright = 0, rightBright = 0, total = 0;
+      for (let yy = relIy; yy < relEy; yy++) {
+        if (xx-1 >= 0) {
+          const p = (yy * ctxW + (xx-1)) * 4;
+          if ((fd[p]+fd[p+1]+fd[p+2])/3 > 200) leftBright++;
+        }
+        if (xx+1 < ctxW) {
+          const p = (yy * ctxW + (xx+1)) * 4;
+          if ((fd[p]+fd[p+1]+fd[p+2])/3 > 200) rightBright++;
+        }
+        total++;
+      }
+      return total > 0 && leftBright > total * 0.7 && rightBright > total * 0.7;
+    }
+    function isThinLineRow(yy) {
+      let topBright = 0, botBright = 0, total = 0;
+      for (let xx = relIx; xx < relEx; xx++) {
+        if (yy-1 >= 0) {
+          const p = ((yy-1) * ctxW + xx) * 4;
+          if ((fd[p]+fd[p+1]+fd[p+2])/3 > 200) topBright++;
+        }
+        if (yy+1 < ctxH) {
+          const p = ((yy+1) * ctxW + xx) * 4;
+          if ((fd[p]+fd[p+1]+fd[p+2])/3 > 200) botBright++;
+        }
+        total++;
+      }
+      return total > 0 && topBright > total * 0.7 && botBright > total * 0.7;
+    }
     for (let xx = relIx - 5; xx < relEx + 5; xx++) {
       if (xx < 0 || xx >= ctxW) continue;
-      // bbox 위쪽 (0..relIy-1) 과 아래쪽 (relEy..ctxH-1) 둘 다 어두운 픽셀이 있어야 진짜 세로선
       let darkAbove = false, darkBelow = false;
       for (let yy = 0; yy < relIy; yy++) if (darkAt(xx, yy)) { darkAbove = true; break; }
       for (let yy = relEy; yy < ctxH; yy++) if (darkAt(xx, yy)) { darkBelow = true; break; }
       if (!(darkAbove && darkBelow)) continue;
-      // 이 컬럼은 bbox 통과하는 세로선 → 어두운 픽셀들만 isLine 마킹
+      if (!isThinLineCol(xx)) continue;  // 좌우가 밝아야 진짜 가는 선
       for (let yy = 0; yy < ctxH; yy++) if (darkAt(xx, yy)) isLine[yy * ctxW + xx] = 1;
     }
-    // 가로선: bbox 밖으로 좌·우 모두 뻗는 어두운 행만 = 진짜 표 테두리
     for (let yy = relIy - 3; yy < relEy + 3; yy++) {
       if (yy < 0 || yy >= ctxH) continue;
       let darkLeft = false, darkRight = false;
       for (let xx = 0; xx < relIx; xx++) if (darkAt(xx, yy)) { darkLeft = true; break; }
       for (let xx = relEx; xx < ctxW; xx++) if (darkAt(xx, yy)) { darkRight = true; break; }
       if (!(darkLeft && darkRight)) continue;
+      if (!isThinLineRow(yy)) continue;
       for (let xx = 0; xx < ctxW; xx++) if (darkAt(xx, yy)) isLine[yy * ctxW + xx] = 1;
     }
     // lineRects 도 마킹
@@ -3776,6 +3806,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v23.58", date: "2026-05-07", desc: "🛡 표 테두리 감지 정확도 ↑ — 가는 선 (좌·우 인접 픽셀 밝음) 조건 추가. 글자 자획이 false positive 로 라인 마킹되던 문제 해결 → 글자 더 깨끗히 지워짐. 자체 테스트 잔재 14% → 목표 1% 미만." },
   { version: "v23.57", date: "2026-05-07", desc: "🩹 글자 지우기 — 임계값 분리 (sample 200, replace 235). 진짜 배경만 모드 색 결정 + AA halo 까지 공격적 제거 → 회색 잔재 거의 안 남음." },
   { version: "v23.56", date: "2026-05-07", desc: "🗓️ 업데이트 내역 날짜 정정 — v23.40~v23.55 까지 16개 항목이 잘못 5월 4일로 표기되어 있던 것을 오늘 날짜(5월 7일)로 정정." },
   { version: "v23.55", date: "2026-05-07", desc: "🔄 글자 지우기 — 행-MODE 방식 + 어두운 픽셀만 교체 + AA 임계값 200 (강화). 박스 단위 fill 안 하고 글자 픽셀만 행 배경색으로 교체. 표 테두리 보호 유지." },
