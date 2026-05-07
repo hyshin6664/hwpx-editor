@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.72<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.73<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -2468,6 +2468,32 @@ function attachPageInteractions(pg) {
         const maskCopy = new Uint8Array(mask);
         InpaintTelea(W, H, single, maskCopy, TELEA_RADIUS);
         for (let i = 0, j = ch; i < single.length; i++, j += 4) fd[j] = single[i];
+      }
+    }
+    // 🎨 흰 배경 snap — 주변이 거의 흰색이면 inpaint 픽셀도 순백으로 (회색 자국 제거)
+    // mask 외곽 ring 의 평균 색이 ~255 이면 mask 영역도 255 로 강제
+    {
+      let bgR=0, bgG=0, bgB=0, bgC=0;
+      for (let yy = 0; yy < H; yy++) {
+        for (let xx = 0; xx < W; xx++) {
+          if (mask[yy * W + xx]) continue;
+          const p = (yy * W + xx) * 4;
+          const r = fd[p], g = fd[p+1], b = fd[p+2];
+          if ((r + g + b) / 3 < 245) continue;  // 진짜 흰색 만
+          bgR += r; bgG += g; bgB += b; bgC++;
+        }
+      }
+      // 외곽 80% 이상이 흰색이면 흰 배경 페이지 → mask 영역 snap
+      const totalNonMask = W * H - mask.reduce((a,b) => a+b, 0);
+      if (bgC > totalNonMask * 0.8) {
+        for (let i = 0; i < mask.length; i++) {
+          if (!mask[i]) continue;
+          const p = i * 4;
+          // mask 픽셀의 현재 색이 거의 흰색 (>230) 이면 순백 snap
+          if ((fd[p] + fd[p+1] + fd[p+2]) / 3 > 230) {
+            fd[p] = 255; fd[p+1] = 255; fd[p+2] = 255;
+          }
+        }
       }
     }
     // 5) 경계 1px Gaussian blur (seam 제거)
@@ -4176,6 +4202,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v23.73", date: "2026-05-08", desc: "🎨 흰 배경 snap — 주변 80%+ 가 흰색이면 inpaint 결과 픽셀 (>230) 을 순백 255 로 강제. 미세한 회색 자국 사라짐." },
   { version: "v23.72", date: "2026-05-07", desc: "🔍 글자 지우기 SCALE 최대 100배 (사용자 요청 한도). 매우 작은 글자(~100px) 100x, 중간 10x, 큰 1-3x. 최대한 미세하게." },
   { version: "v23.71", date: "2026-05-07", desc: "🩹 글자 지우기 — 사각형 마스크 X. 실제 어두운 글씨 픽셀만 마스킹 (1px dilation 으로 AA 흡수). 배경 픽셀은 원본 그대로 → 뭉개짐 절대 없음. 글자 자획만 미세하게 inpaint." },
   { version: "v23.70", date: "2026-05-07", desc: "🔍 글자 지우기 — 100x 컨셉 강화 (사용자 요청). 영역 크기에 반비례하는 SCALE (sqrt(1M/totalPx), 최대 50x). 작은 영역은 진짜 50배 확대까지 → 미세 처리. Telea radius 도 자동 조정 (최대 12)." },
