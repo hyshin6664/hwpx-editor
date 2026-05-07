@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.47<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.48<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -2221,7 +2221,9 @@ function attachPageInteractions(pg) {
   }
 
   function paintTextStrokesLinear(tx, ty, tw, th) {
-    // v23.47 — 뭉개짐 완전 방지: 주변이 복잡한 그래픽이면 건드리지 않음 (글자 남아도 OK)
+    // v23.48 — 행 단위 좌우 배경 색 dominant fill (뭉개지지 않음)
+    // 각 행마다 bbox 의 좌측·우측 깨끗한 픽셀 → 평균 → 그 행 채움
+    // → 표 셀 컬러·헤더 회색·세로 그라데이션 자연스럽게, streak 없음
     const PAD = Math.max(5, Math.min(10, Math.round(th * 0.35)));
     const ix = Math.max(0, Math.floor(tx - PAD));
     const iy = Math.max(0, Math.floor(ty - PAD));
@@ -2230,88 +2232,49 @@ function attachPageInteractions(pg) {
     const cw = ex - ix, ch = ey - iy;
     if (cw <= 0 || ch <= 0) return [255, 255, 255];
 
-    const ctxT = Math.max(0, iy - 25);
-    const ctxB = Math.min(canvas.height, ey + 25);
-    const ctxH = ctxB - ctxT;
+    // 좌·우 25px 컨텍스트 같이 — 각 행 좌우에서 깨끗한 픽셀 찾을 확률 ↑
+    const ctxL = Math.max(0, ix - 25);
+    const ctxR = Math.min(canvas.width, ex + 25);
+    const ctxW = ctxR - ctxL;
     let fullImg;
-    try { fullImg = ctx.getImageData(ix, ctxT, cw, ctxH); } catch (_e) { return [255,255,255]; }
+    try { fullImg = ctx.getImageData(ctxL, iy, ctxW, ch); } catch (_e) { return [255,255,255]; }
     const fd = fullImg.data;
-    const relIy = iy - ctxT;
-    const relEy = ey - ctxT;
+    const relIx = ix - ctxL;
+    const relEx = ex - ctxL;
 
-    // 🛡 변동성 체크 — 주변(위·아래) 픽셀이 복잡한 색이면 건드리지 않음
-    // 본문 단락(균일 배경) ↔ 로고/컬러 그래픽(복잡) 구분
-    function colorVariance() {
-      let cnt = 0, sR=0, sG=0, sB=0, qR=0, qG=0, qB=0;
-      const sample = (yS, yE) => {
-        for (let yy = yS; yy < yE; yy++) {
-          for (let xx = 0; xx < cw; xx += 2) {  // 2픽셀 간격 샘플 (속도)
-            const p = (yy * cw + xx) * 4;
-            const r = fd[p], g = fd[p+1], b = fd[p+2];
-            // 어두운 글자 픽셀 제외 (배경만 보고 싶음)
-            if ((r+g+b)/3 < 100) continue;
-            sR += r; sG += g; sB += b;
-            qR += r*r; qG += g*g; qB += b*b;
-            cnt++;
-          }
-        }
-      };
-      sample(0, relIy);
-      sample(relEy, ctxH);
-      if (cnt < 10) return 999;  // 데이터 부족 = 위험 = skip
-      const aR = sR/cnt, aG = sG/cnt, aB = sB/cnt;
-      const vR = Math.max(0, qR/cnt - aR*aR);
-      const vG = Math.max(0, qG/cnt - aG*aG);
-      const vB = Math.max(0, qB/cnt - aB*aB);
-      return Math.sqrt(vR + vG + vB);
-    }
-    const varStd = colorVariance();
-    // 변동성 60 이상 = 복잡한 그래픽/로고 → 건드리지 않고 그대로 둠
-    if (varStd > 60) {
-      console.debug('paintText skip — complex bg, var=', varStd.toFixed(1));
-      return [255, 255, 255];
-    }
-
-    // "어두운/글자" 픽셀 판정 — 평균 < 100 OR 채도 높고 어두운
-    function isDark(r, g, b) {
-      const avg = (r + g + b) / 3;
-      if (avg < 100) return true;
-      // 회색 헤더 위 검은 글자 케이스 — 주변보다 어두우면 글자
-      return false;
-    }
-
-    // 각 x 컬럼마다: bbox 직전 깨끗한 위 픽셀 + 직후 깨끗한 아래 픽셀 → 선형 보간
-    for (let xx = 0; xx < cw; xx++) {
-      // 위쪽 — bbox 시작 직전부터 위로 스캔, 첫 깨끗한 픽셀
-      let topR = -1, topG = 0, topB = 0, topY = -1;
-      for (let yy = relIy - 1; yy >= 0; yy--) {
-        const p = (yy * cw + xx) * 4;
+    // 각 행에서 좌측·우측 깨끗한 픽셀 평균 → 그 행을 그 색으로 채움
+    for (let yy = 0; yy < ch; yy++) {
+      const rowOff = yy * ctxW * 4;
+      let sumR = 0, sumG = 0, sumB = 0, cnt = 0;
+      // 좌측 (0..relIx-1) — 깨끗한(밝은) 픽셀만
+      for (let xx = 0; xx < relIx; xx++) {
+        const p = rowOff + xx * 4;
         const r = fd[p], g = fd[p+1], b = fd[p+2];
-        if (!isDark(r, g, b)) { topR = r; topG = g; topB = b; topY = yy; break; }
+        if ((r + g + b) / 3 < 100) continue;  // 글자 픽셀 제외
+        sumR += r; sumG += g; sumB += b; cnt++;
       }
-      // 아래쪽
-      let botR = -1, botG = 0, botB = 0, botY = -1;
-      for (let yy = relEy; yy < ctxH; yy++) {
-        const p = (yy * cw + xx) * 4;
+      // 우측 (relEx..ctxW-1)
+      for (let xx = relEx; xx < ctxW; xx++) {
+        const p = rowOff + xx * 4;
         const r = fd[p], g = fd[p+1], b = fd[p+2];
-        if (!isDark(r, g, b)) { botR = r; botG = g; botB = b; botY = yy; break; }
+        if ((r + g + b) / 3 < 100) continue;
+        sumR += r; sumG += g; sumB += b; cnt++;
       }
-      // 둘 다 못 찾으면 흰색
-      if (topR < 0 && botR < 0) { topR = topG = topB = 255; topY = relIy - 1; }
-      if (topR < 0) { topR = botR; topG = botG; topB = botB; topY = relIy - 1; }
-      if (botR < 0) { botR = topR; botG = topG; botB = topB; botY = relEy; }
-      // 각 y 위치에서 위↔아래 선형 보간 (그라데이션·헤더 색·표 배경 자연스럽게)
-      const span = Math.max(1, botY - topY);
-      for (let yy = relIy; yy < relEy; yy++) {
-        const t = (yy - topY) / span;
-        const r = Math.round(topR + (botR - topR) * t);
-        const g = Math.round(topG + (botG - topG) * t);
-        const b = Math.round(topB + (botB - topB) * t);
-        const p = (yy * cw + xx) * 4;
-        fd[p] = r; fd[p+1] = g; fd[p+2] = b;
+      let mr, mg, mb;
+      if (cnt > 0) {
+        mr = Math.round(sumR / cnt);
+        mg = Math.round(sumG / cnt);
+        mb = Math.round(sumB / cnt);
+      } else {
+        mr = mg = mb = 255;  // 좌우 다 글자면 흰색
+      }
+      // 이 행의 bbox 영역 모든 픽셀을 그 색으로 채움
+      for (let xx = relIx; xx < relEx; xx++) {
+        const p = rowOff + xx * 4;
+        fd[p] = mr; fd[p+1] = mg; fd[p+2] = mb;
       }
     }
-    ctx.putImageData(fullImg, ix, ctxT);
+    ctx.putImageData(fullImg, ctxL, iy);
     return [255, 255, 255];
   }
 
@@ -3741,6 +3704,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v23.48", date: "2026-05-04", desc: "🩹 글자 지우기 — 행 단위 좌우 dominant 색 fill 방식 (사용자 선택). 항상 깨끗하게 채움 (skip 안 함). 표 셀 색·헤더 회색·세로 그라데이션 자연스럽게, 세로 줄(streak) 잔재 안 남음. 컬러 그래픽 영역도 단순 행 배경색으로 채움." },
   { version: "v23.47", date: "2026-05-04", desc: "🛡 글자 지우기 뭉개짐 완전 방지 — 주변 색 변동성 자동 측정. 본문(균일 배경) → 깨끗하게 지움. 로고·컬러 그래픽(복잡 배경) → 건드리지 않음 (글자 남아도 뭉개진 줄보다 낫다는 원칙)." },
   { version: "v23.46", date: "2026-05-04", desc: "🚨 페이지 멈춤 긴급 수정 — OpenCV.js 자동 백그라운드 로드 제거 (WASM 컴파일이 메인 스레드 막아 '응답 없는 페이지' 발생). 글자 지우기는 기존 선형보간 알고리즘 (충분히 좋음). SW 캐시 v6→v7 강제 갱신." },
   { version: "v23.45", date: "2026-05-04", desc: "🚨 Self-heal — 페이지 5초 후에도 loading 멈춰 있으면 자동 SW 제거 + 캐시 비움 + 새로고침. 구버전 SW 가 stale HTML 서빙하는 stuck 케이스 자가 복구. 한 세션당 1회만 실행." },
