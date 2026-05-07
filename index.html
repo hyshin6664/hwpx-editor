@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.69<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.70<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -2409,14 +2409,11 @@ function attachPageInteractions(pg) {
         fd[p] = mr; fd[p+1] = mg; fd[p+2] = mb;
       }
     }
-    // 5) Telea — 사용자 요청: 100x 컨셉 = 영역 작을 수록 더 크게 확대
-    //    매우 작음 (<2000px): 8x (64배 픽셀)
-    //    작음 (<10000px): 4x (16배 픽셀)
-    //    중간 (<40000px): 3x (9배)
-    //    큼 (<160000px): 2x (4배)
-    //    매우 큼: 1x (성능 한계)
+    // 5) Telea — 100x 컨셉 (미세 처리). 영역 클수록 SCALE 낮추되 항상 픽셀 수 ~1M 유지
+    //   영역 px → SCALE: 작은 영역 50x, 큰 영역도 합리적 한도
+    //   목표: SCALE^2 * totalPx ≈ 1M (Telea 처리 한계 ~1-2초)
     const totalPx = W * H;
-    const SCALE = totalPx < 2000 ? 8 : (totalPx < 10000 ? 4 : (totalPx < 40000 ? 3 : (totalPx < 160000 ? 2 : 1)));
+    const SCALE = Math.max(2, Math.min(50, Math.floor(Math.sqrt(1_000_000 / totalPx))));
     if (SCALE > 1) {
       const W2 = W * SCALE, H2 = H * SCALE;
       // bilinear 업스케일을 OffscreenCanvas 로 (브라우저 GPU 활용)
@@ -2440,12 +2437,13 @@ function attachPageInteractions(pg) {
         for (let dy = 0; dy < SCALE; dy++) for (let dx = 0; dx < SCALE; dx++)
           bigMask[(yy*SCALE+dy) * W2 + (xx*SCALE+dx)] = 1;
       }
-      // Telea 채널별
+      // Telea 채널별. radius 는 SCALE 비례하되 최대 12 (Telea O(N·r²) — 너무 크면 느림)
+      const bigRadius = Math.min(12, Math.max(TELEA_RADIUS, Math.round(TELEA_RADIUS * Math.sqrt(SCALE))));
       for (let ch = 0; ch < 3; ch++) {
         const single = new Uint8Array(W2 * H2);
         for (let i = 0, j = ch; i < single.length; i++, j += 4) single[i] = big[j];
         const maskCopy = new Uint8Array(bigMask);
-        InpaintTelea(W2, H2, single, maskCopy, TELEA_RADIUS * SCALE);
+        InpaintTelea(W2, H2, single, maskCopy, bigRadius);
         for (let i = 0, j = ch; i < single.length; i++, j += 4) big[j] = single[i];
       }
       // 다운샘플 (각 mask 픽셀에 대해 SCALE×SCALE 평균)
@@ -4178,6 +4176,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v23.70", date: "2026-05-07", desc: "🔍 글자 지우기 — 100x 컨셉 강화 (사용자 요청). 영역 크기에 반비례하는 SCALE (sqrt(1M/totalPx), 최대 50x). 작은 영역은 진짜 50배 확대까지 → 미세 처리. Telea radius 도 자동 조정 (최대 12)." },
   { version: "v23.69", date: "2026-05-07", desc: "🔍 글자 지우기 — 사용자 요청 '100x 컨셉' 적용. 영역 작을수록 8x → 4x → 3x → 2x → 1x adaptive bilinear 확대 후 Telea 처리. 작은 글자도 미세하게. 시간 좀 걸려도 부드럽게." },
   { version: "v23.68", date: "2026-05-07", desc: "🩹 글자 지우기 — 큰 영역 뭉개짐 방지 (사용자 피드백). 2x 확대 제거. PRE-FILL 추가: 각 행 mask 영역을 좌·우 배경 평균색으로 사전 채움 → Telea 가 가장자리만 다듬음. 큰 텍스트 블록도 깔끔." },
   { version: "v23.67", date: "2026-05-07", desc: "🔍 글자 지우기 — 2x 확대 후 inpaint 후 다운샘플 (사용자 제안). 고해상도에서 Telea → 자연스러움 ↑. 큰 영역은 자동으로 1x." },
