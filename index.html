@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.45<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.46<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -3713,6 +3713,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v23.46", date: "2026-05-04", desc: "🚨 페이지 멈춤 긴급 수정 — OpenCV.js 자동 백그라운드 로드 제거 (WASM 컴파일이 메인 스레드 막아 '응답 없는 페이지' 발생). 글자 지우기는 기존 선형보간 알고리즘 (충분히 좋음). SW 캐시 v6→v7 강제 갱신." },
   { version: "v23.45", date: "2026-05-04", desc: "🚨 Self-heal — 페이지 5초 후에도 loading 멈춰 있으면 자동 SW 제거 + 캐시 비움 + 새로고침. 구버전 SW 가 stale HTML 서빙하는 stuck 케이스 자가 복구. 한 세션당 1회만 실행." },
   { version: "v23.44", date: "2026-05-04", desc: "🐛 열기 버튼·드래그 먹통 수정 — 시작 직후 loading 잔재 강제 제거 + SW 캐시 v6 으로 갱신 (새로고침 시 무조건 새 버전)." },
   { version: "v23.43", date: "2026-05-04", desc: "🚀 rhwp(한글) 엔진도 백그라운드 로드 (사용자 요청) — 시작 시 'rhwp 받는 중…' 화면 제거. UI 즉시 사용. .hwp/.hwpx 열 때만 (아직 안 받아졌으면) 짧게 대기. PDF/DOCX 사용자는 영향 0." },
@@ -3861,44 +3862,10 @@ newsClose.addEventListener('click', () => newsOverlay.classList.add('hidden'));
 newsOverlay.addEventListener('click', (e) => { if (e.target === newsOverlay) newsOverlay.classList.add('hidden'); });
 refreshVerDot();
 
-// =============================================================
-// OpenCV.js 백그라운드 로드 — 글자 지우기 품질 향상 (Telea inpainting)
-// 페이지 떠 있는 동안 조용히 받음 (블로킹 X). 받아지면 글자 지우기 자동 향상
-// =============================================================
+// 🚫 OpenCV.js 자동 로드 제거 — WASM 컴파일이 메인 스레드 막아 페이지 응답 없음
+// 글자 지우기는 기존 선형보간 알고리즘 사용 (충분히 좋음)
 window.__opencvReady = false;
 window.__opencvPromise = null;
-function preloadOpenCV() {
-  if (window.__opencvPromise) return window.__opencvPromise;
-  window.__opencvPromise = new Promise((resolve) => {
-    try {
-      const s = document.createElement('script');
-      s.src = 'https://docs.opencv.org/4.10.0/opencv.js';
-      s.async = true;
-      s.onload = () => {
-        // cv 가 즉시 ready 인지 비동기 ready 인지 확인
-        if (typeof cv !== 'undefined' && cv && typeof cv.then === 'function') {
-          // Module promise (newer wasm builds)
-          cv.then((c) => { window.__opencvReady = true; window.cv = c; resolve(c); })
-            .catch(() => { window.__opencvReady = false; resolve(null); });
-        } else if (typeof cv !== 'undefined' && cv) {
-          if (cv.imread) { window.__opencvReady = true; resolve(cv); }
-          else { cv.onRuntimeInitialized = () => { window.__opencvReady = true; resolve(cv); }; }
-        } else {
-          resolve(null);
-        }
-      };
-      s.onerror = () => { window.__opencvReady = false; resolve(null); };
-      document.head.appendChild(s);
-    } catch (_e) { resolve(null); }
-  });
-  return window.__opencvPromise;
-}
-// 페이지 한가해지면 시작 (idle 시점) — 첫 로드 UX 영향 0
-if ('requestIdleCallback' in window) {
-  requestIdleCallback(() => preloadOpenCV(), { timeout: 4000 });
-} else {
-  setTimeout(preloadOpenCV, 2000);
-}
 
 // =============================================================
 // 방문자 카운터 — 전역 누적 (모든 기기·브라우저 합산, 영구 보존)
