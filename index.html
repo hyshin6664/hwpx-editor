@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.61<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.62<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -2264,42 +2264,86 @@ function attachPageInteractions(pg) {
       return isLine[ry * ctxW + rx] === 1;
     }
 
-    // 🎨 v23.61 — 컬럼 복제 방식: 각 컬럼별로 bbox 내부를 위·아래 깨끗한 픽셀의 평균으로 채움
-    //   · 같은 컬럼의 위·아래 첫 번째 깨끗한 픽셀(밝기>200) 평균
-    //   · 표 테두리 보호
-    //   · "글자처럼 어두운" 픽셀 (avg < replaceThr) 만 교체
-    function findCleanInColumn(xx) {
-      let topR=-1, topG=0, topB=0;
-      for (let yy = relIy - 1; yy >= 0; yy--) {
-        if (isLinePixelRel(xx, yy)) continue;
-        const p = (yy * ctxW + xx) * 4;
-        const r = fd[p], g = fd[p+1], b = fd[p+2];
-        if ((r+g+b)/3 >= 200) { topR=r; topG=g; topB=b; break; }
+    // 🎨 v23.62 — 하이브리드: 컬럼 → 행 → 전역 배경 (3단 fallback)
+    //   각 컬럼에서 위·아래 깨끗한 픽셀 못 찾으면 행에서, 그것도 없으면 전역 페이지 MODE 색
+    // 1) 전역 페이지 배경 색 (가장 흔한 밝은 색) — 한 번 계산
+    let globalBg = [255, 255, 255];
+    {
+      // 전체 fullImg 픽셀 중 밝은 픽셀 MODE
+      const bins = new Map();
+      const stride = 4 * 8;  // 8픽셀마다 샘플 (속도)
+      for (let i = 0; i < fd.length; i += stride) {
+        const r = fd[i], g = fd[i+1], b = fd[i+2];
+        if ((r+g+b)/3 < 200) continue;
+        const k = (r >> 4) << 8 | (g >> 4) << 4 | (b >> 4);
+        if (!bins.has(k)) bins.set(k, { c:0, s:[0,0,0] });
+        const v = bins.get(k); v.c++; v.s[0]+=r; v.s[1]+=g; v.s[2]+=b;
       }
-      let botR=-1, botG=0, botB=0;
-      for (let yy = relEy; yy < ctxH; yy++) {
-        if (isLinePixelRel(xx, yy)) continue;
-        const p = (yy * ctxW + xx) * 4;
-        const r = fd[p], g = fd[p+1], b = fd[p+2];
-        if ((r+g+b)/3 >= 200) { botR=r; botG=g; botB=b; break; }
-      }
-      if (topR < 0 && botR < 0) return [255, 255, 255];
-      if (topR < 0) return [botR, botG, botB];
-      if (botR < 0) return [topR, topG, topB];
-      // 둘 다 있으면 평균
-      return [(topR+botR)>>1, (topG+botG)>>1, (topB+botB)>>1];
+      let best = null;
+      bins.forEach(v => { if (!best || v.c > best.c) best = v; });
+      if (best) globalBg = [Math.round(best.s[0]/best.c), Math.round(best.s[1]/best.c), Math.round(best.s[2]/best.c)];
     }
+    // 2) 행별 MODE 배경 색 — 캐시
+    const rowBgCache = new Map();
+    function rowBg(yy) {
+      if (rowBgCache.has(yy)) return rowBgCache.get(yy);
+      const rowOff = yy * ctxW * 4;
+      const bins = new Map();
+      // 좌측 30 + 우측 30
+      const collect = (xS, xE) => {
+        for (let xx = xS; xx < xE; xx++) {
+          if (isLinePixelRel(xx, yy)) continue;
+          const p = rowOff + xx * 4;
+          const r = fd[p], g = fd[p+1], b = fd[p+2];
+          if ((r+g+b)/3 < 200) continue;
+          const k = (r >> 4) << 8 | (g >> 4) << 4 | (b >> 4);
+          if (!bins.has(k)) bins.set(k, { c:0, s:[0,0,0] });
+          const v = bins.get(k); v.c++; v.s[0]+=r; v.s[1]+=g; v.s[2]+=b;
+        }
+      };
+      collect(0, relIx); collect(relEx, ctxW);
+      let best = null;
+      bins.forEach(v => { if (!best || v.c > best.c) best = v; });
+      const out = best ? [Math.round(best.s[0]/best.c), Math.round(best.s[1]/best.c), Math.round(best.s[2]/best.c)] : null;
+      rowBgCache.set(yy, out);
+      return out;
+    }
+    // 3) 컬럼별: 위·아래 클린 픽셀 (먼 거리 까지 탐색)
+    function colBg(xx) {
+      let top = null, bot = null;
+      for (let yy = relIy - 1; yy >= Math.max(0, relIy - 60); yy--) {
+        if (isLinePixelRel(xx, yy)) continue;
+        const p = (yy * ctxW + xx) * 4;
+        const r = fd[p], g = fd[p+1], b = fd[p+2];
+        if ((r+g+b)/3 >= 200) { top = [r,g,b]; break; }
+      }
+      for (let yy = relEy; yy < Math.min(ctxH, relEy + 60); yy++) {
+        if (isLinePixelRel(xx, yy)) continue;
+        const p = (yy * ctxW + xx) * 4;
+        const r = fd[p], g = fd[p+1], b = fd[p+2];
+        if ((r+g+b)/3 >= 200) { bot = [r,g,b]; break; }
+      }
+      if (!top && !bot) return null;
+      if (!top) return bot;
+      if (!bot) return top;
+      return [(top[0]+bot[0])>>1, (top[1]+bot[1])>>1, (top[2]+bot[2])>>1];
+    }
+    // 채움
     for (let xx = relIx; xx < relEx; xx++) {
-      const [cr, cg, cb] = findCleanInColumn(xx);
-      const colBrightness = (cr + cg + cb) / 3;
-      const replaceThr = Math.max(80, colBrightness - 30);
+      let bg = colBg(xx);
       for (let yy = relIy; yy < relEy; yy++) {
         if (isLinePixelRel(xx, yy)) continue;
         const p = (yy * ctxW + xx) * 4;
         const r = fd[p], g = fd[p+1], b = fd[p+2];
         const avg = (r + g + b) / 3;
+        // 컬럼 fallback X → 행 fallback X → 전역 fallback
+        let fillColor = bg;
+        if (!fillColor) fillColor = rowBg(yy);
+        if (!fillColor) fillColor = globalBg;
+        const bgBright = (fillColor[0] + fillColor[1] + fillColor[2]) / 3;
+        const replaceThr = Math.max(80, bgBright - 30);
         if (avg >= replaceThr) continue;
-        fd[p] = cr; fd[p+1] = cg; fd[p+2] = cb;
+        fd[p] = fillColor[0]; fd[p+1] = fillColor[1]; fd[p+2] = fillColor[2];
       }
     }
     ctx.putImageData(fullImg, ctxL, ctxT);
@@ -3741,6 +3785,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v23.62", date: "2026-05-07", desc: "🎨 글자 지우기 — 3단 fallback 하이브리드. 컬럼 위·아래 (60px) → 행 좌·우 → 전역 페이지 배경 MODE. 텍스트 밀집 영역에서도 합리적 색 찾음." },
   { version: "v23.61", date: "2026-05-07", desc: "🎨 글자 지우기 — 컬럼 복제 방식. 각 컬럼별로 위·아래 깨끗한 픽셀 평균색으로 채움. 세로 그라데이션·표 헤더 자연스럽게 동화." },
   { version: "v23.60", date: "2026-05-07", desc: "🩹 글자 지우기 — 스마트 임계값 (배경 MODE - 30). 흰 배경에선 220 미만 교체, 회색 헤더에선 170 미만 교체. 회색 셀 자체는 보존하면서 글자만 깨끗히." },
   { version: "v23.59", date: "2026-05-07", desc: "🩹 글자 지우기 — canvas 픽셀 직선 감지 제거 (false positive 원인). PDF 메타데이터 lineRects 만으로 표 테두리 보호. 글자 자획이 라인으로 잘못 마킹되지 않음 → 깨끗하게 지워짐." },
