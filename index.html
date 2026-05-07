@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.74<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.75<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -2342,25 +2342,22 @@ function attachPageInteractions(pg) {
     if (W <= 4 || H <= 4) return;
     const fullImg = ctx.getImageData(ix, iy, W, H);
     const fd = fullImg.data;
-    // mask = 어두운 픽셀 (이 textBox + 인접 textBox)
+    // mask = 진짜 어두운 픽셀만 (<150 = 글자 본체). AA halo 는 건드리지 않음 (뭉개짐 방지)
+    //   dilation 없음 — 자획이 두꺼워지지 않게
     const mask = new Uint8Array(W * H);
+    let maskCount = 0;
     for (let yy = 0; yy < H; yy++) {
       for (let xx = 0; xx < W; xx++) {
         const p = (yy * W + xx) * 4;
         const r = fd[p], g = fd[p+1], b = fd[p+2];
-        if ((r + g + b) / 3 < 220) mask[yy * W + xx] = 1;
+        if ((r + g + b) / 3 < 150) { mask[yy * W + xx] = 1; maskCount++; }
       }
     }
-    // 1px dilation
-    const md = new Uint8Array(mask);
-    for (let yy = 1; yy < H - 1; yy++) {
-      for (let xx = 1; xx < W - 1; xx++) {
-        if (mask[yy * W + xx]) continue;
-        if (mask[yy*W + xx-1] || mask[yy*W + xx+1] || mask[(yy-1)*W + xx] || mask[(yy+1)*W + xx])
-          md[yy * W + xx] = 1;
-      }
+    // 마스크가 영역 70% 초과면 (자획 빽빽) — Telea 가 샘플 부족 → skip
+    if (maskCount > W * H * 0.7) {
+      console.debug('skip dense bbox', it.x, it.y, 'mask%=', (maskCount/(W*H)*100).toFixed(1));
+      return;
     }
-    for (let i = 0; i < mask.length; i++) mask[i] = md[i];
     // 표 테두리 보호
     for (const lr of (pg.lineRects || [])) {
       if (lr.x >= ex || lr.x + lr.w <= ix || lr.y >= ey || lr.y + lr.h <= iy) continue;
@@ -4319,6 +4316,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v23.75", date: "2026-05-08", desc: "🩹 뭉개짐 핫픽스 — 임계값 150 (이전 220) + dilation 제거. 진짜 어두운 글자 본체만 마스킹. AA halo 살짝 남을 수 있어도 뭉개짐 X. 마스크 70%+ 빽빽한 자획은 skip (Telea 샘플 부족 방지)." },
   { version: "v23.74", date: "2026-05-08", desc: "🎯 각 textBox 따로 처리 (사용자 요청 — 작은 영역 = 최대 확대). 박스마다 sqrt(1M/area) SCALE 자동 계산 (작은 단어 ~30x, 글자 ~50x). 박스 단위로 짧은 시간에 미세 처리." },
   { version: "v23.73", date: "2026-05-08", desc: "🎨 흰 배경 snap — 주변 80%+ 가 흰색이면 inpaint 결과 픽셀 (>230) 을 순백 255 로 강제. 미세한 회색 자국 사라짐." },
   { version: "v23.72", date: "2026-05-07", desc: "🔍 글자 지우기 SCALE 최대 100배 (사용자 요청 한도). 매우 작은 글자(~100px) 100x, 중간 10x, 큰 1-3x. 최대한 미세하게." },
