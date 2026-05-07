@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.51<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.52<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -2261,41 +2261,26 @@ function attachPageInteractions(pg) {
       const p = (yy * ctxW + xx) * 4;
       return (fd[p] + fd[p+1] + fd[p+2]) / 3 < 180;
     }
-    // 세로선: 한 컬럼에서 위·아래 8px 이상 연속 어두움
+    // 세로선: bbox 밖으로 위·아래 모두 뻗는 어두운 컬럼만 = 진짜 표 테두리
+    // (글자 자획은 bbox 안에서만 어둡고 bbox 밖은 안 어두움)
     for (let xx = relIx - 5; xx < relEx + 5; xx++) {
       if (xx < 0 || xx >= ctxW) continue;
-      let runStart = -1;
-      for (let yy = 0; yy < ctxH; yy++) {
-        if (darkAt(xx, yy)) {
-          if (runStart < 0) runStart = yy;
-        } else {
-          if (runStart >= 0 && yy - runStart >= 8) {
-            for (let i = runStart; i < yy; i++) isLine[i * ctxW + xx] = 1;
-          }
-          runStart = -1;
-        }
-      }
-      if (runStart >= 0 && ctxH - runStart >= 8) {
-        for (let i = runStart; i < ctxH; i++) isLine[i * ctxW + xx] = 1;
-      }
+      // bbox 위쪽 (0..relIy-1) 과 아래쪽 (relEy..ctxH-1) 둘 다 어두운 픽셀이 있어야 진짜 세로선
+      let darkAbove = false, darkBelow = false;
+      for (let yy = 0; yy < relIy; yy++) if (darkAt(xx, yy)) { darkAbove = true; break; }
+      for (let yy = relEy; yy < ctxH; yy++) if (darkAt(xx, yy)) { darkBelow = true; break; }
+      if (!(darkAbove && darkBelow)) continue;
+      // 이 컬럼은 bbox 통과하는 세로선 → 어두운 픽셀들만 isLine 마킹
+      for (let yy = 0; yy < ctxH; yy++) if (darkAt(xx, yy)) isLine[yy * ctxW + xx] = 1;
     }
-    // 가로선: 한 행에서 좌·우 8px 이상 연속 어두움
+    // 가로선: bbox 밖으로 좌·우 모두 뻗는 어두운 행만 = 진짜 표 테두리
     for (let yy = relIy - 3; yy < relEy + 3; yy++) {
       if (yy < 0 || yy >= ctxH) continue;
-      let runStart = -1;
-      for (let xx = 0; xx < ctxW; xx++) {
-        if (darkAt(xx, yy)) {
-          if (runStart < 0) runStart = xx;
-        } else {
-          if (runStart >= 0 && xx - runStart >= 8) {
-            for (let i = runStart; i < xx; i++) isLine[yy * ctxW + i] = 1;
-          }
-          runStart = -1;
-        }
-      }
-      if (runStart >= 0 && ctxW - runStart >= 8) {
-        for (let i = runStart; i < ctxW; i++) isLine[yy * ctxW + i] = 1;
-      }
+      let darkLeft = false, darkRight = false;
+      for (let xx = 0; xx < relIx; xx++) if (darkAt(xx, yy)) { darkLeft = true; break; }
+      for (let xx = relEx; xx < ctxW; xx++) if (darkAt(xx, yy)) { darkRight = true; break; }
+      if (!(darkLeft && darkRight)) continue;
+      for (let xx = 0; xx < ctxW; xx++) if (darkAt(xx, yy)) isLine[yy * ctxW + xx] = 1;
     }
     // lineRects 도 마킹
     for (const lr of lineRectsClose) {
@@ -3777,6 +3762,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v23.52", date: "2026-05-04", desc: "🎯 글자 vs 표 테두리 정확 구분 — 직선 감지 시 'bbox 밖으로 양쪽 뻗는' 조건 추가. 글자 자획(bbox 안에서만 존재) 은 직선으로 안 봄 → 깨끗하게 지워짐. 표 테두리(영역 통과) 만 보호." },
   { version: "v23.51", date: "2026-05-04", desc: "🛡 표 테두리 절대 보호 강화 — canvas 픽셀 자체에서 직선 직접 감지 (8픽셀 이상 연속 어두움 = 직선). PDF.js lineRects 누락된 표(filled rect 로 그려진 표) 도 정확히 보호. 직선 픽셀은 샘플링·fill 모두 제외." },
   { version: "v23.50", date: "2026-05-04", desc: "🛡 글자 지우기 — 표 테두리(lineRects) 자동 보호. 영역 안에 검은 선이 있으면 그 픽셀은 fill 안 함. 표 절대 안 깨짐." },
   { version: "v23.49", date: "2026-05-04", desc: "🩹 글자 지우기 — 행 단위 MODE(최빈색) + PAD 8~16px (AA halo 까지 덮음). 평균 X 최빈색이라 표 테두리·인접 글자 outlier 영향 없음. 4비트 quantize 로 비슷한 색 묶음. 회색 잔재 거의 안 남음." },
