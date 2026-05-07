@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.64<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.65<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -2335,7 +2335,14 @@ function attachPageInteractions(pg) {
     // 🎨 v23.63 — Telea FMM inpainting (antimatter15/inpaint.js, MIT)
     //   각 글자 픽셀을 주변 그래디언트 따라 자연스럽게 채움. AA halo 까지 깨끗.
     try {
-      const PAD = Math.max(4, Math.min(8, Math.round(th * 0.3)));
+      // 🎯 글자 크기별 adaptive 파라미터
+      // 작은 글자 (h<18): radius 3, dil 1, PAD 4
+      // 보통 (18-30): radius 4, dil 2, PAD 6
+      // 큰 헤더 (>30): radius 6, dil 3, PAD 10
+      const _smallTxt = th < 18, _bigTxt = th > 30;
+      const TELEA_RADIUS = _smallTxt ? 3 : (_bigTxt ? 6 : 4);
+      const DIL_PX = _smallTxt ? 1 : (_bigTxt ? 3 : 2);
+      const PAD = _smallTxt ? 4 : (_bigTxt ? 10 : 6);
       const ix = Math.max(0, Math.floor(tx - PAD));
       const iy = Math.max(0, Math.floor(ty - PAD));
       const ex = Math.min(canvas.width, Math.ceil(tx + tw + PAD));
@@ -2355,7 +2362,7 @@ function attachPageInteractions(pg) {
       const mask = new Uint8Array(W * H);
       const relIx = ix - ctxL, relEx = ex - ctxL;
       const relIy = iy - ctxT, relEy = ey - ctxT;
-      const DIL = 2;
+      const DIL = DIL_PX;
       const dilStartX = Math.max(0, relIx - DIL), dilEndX = Math.min(W, relEx + DIL);
       const dilStartY = Math.max(0, relIy - DIL), dilEndY = Math.min(H, relEy + DIL);
       for (let yy = dilStartY; yy < dilEndY; yy++)
@@ -2388,7 +2395,7 @@ function attachPageInteractions(pg) {
         const single = new Uint8Array(W * H);
         for (let i = 0, j = ch; i < single.length; i++, j += 4) single[i] = fd[j];
         const maskCopy = new Uint8Array(mask);
-        InpaintTelea(W, H, single, maskCopy, 4);
+        InpaintTelea(W, H, single, maskCopy, TELEA_RADIUS);
         for (let i = 0, j = ch; i < single.length; i++, j += 4) fd[j] = single[i];
       }
       // 🎨 2차 후처리: mask 경계 1px 링에 가우시안 blur (3x3, sigma 0.6) — seam 제거
@@ -3991,6 +3998,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v23.65", date: "2026-05-07", desc: "🎯 Telea adaptive 파라미터 — 글자 크기별로 radius/dilation/PAD 자동 조정. 작은 글자(h<18) r=3 dil=1, 보통 r=4 dil=2, 큰 헤더(h>30) r=6 dil=3. 한자/제목 자획에 더 정확하게 대응." },
   { version: "v23.64", date: "2026-05-07", desc: "🎨 Telea 후처리 3종 (리서치 확인) — (1) mask dilation +2px (AA halo 흡수), (2) edge-aware: 외곽 ring 의 검은 라인 자동 보호, (3) mask 경계 1px Gaussian blur (seam 제거). 글자 100% 깨끗, 표 테두리 절대 안 다침." },
   { version: "v23.63", date: "2026-05-07", desc: "🎨 Telea FMM inpainting 통합 (antimatter15/inpaint.js, MIT, 5KB inline). Photoshop content-aware fill 급 알고리즘 — 각 글자 픽셀을 주변 그래디언트 따라 자연스럽게 채움. AA halo 깨끗. 표 테두리(lineRects) 보호." },
   { version: "v23.62", date: "2026-05-07", desc: "🎨 글자 지우기 — 3단 fallback 하이브리드. 컬럼 위·아래 (60px) → 행 좌·우 → 전역 페이지 배경 MODE. 텍스트 밀집 영역에서도 합리적 색 찾음." },
