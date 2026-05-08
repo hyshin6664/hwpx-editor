@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.84<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.85<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -2331,110 +2331,85 @@ function attachPageInteractions(pg) {
     return [255, 255, 255];
   }
 
-  // 🎯 단일 textBox 처리 — 작은 영역 → 최대 SCALE 확대 → 미세 처리
+  // 🎯 v23.85 — 처음부터 다시. 단순 원칙:
+  //   1) 10배 확대 (정밀도 ↑)
+  //   2) 각 픽셀 검사 — 어두우면 (<200 brightness) "글씨"
+  //   3) 글씨 픽셀만 → 가장 가까운 밝은 인접 픽셀 색 복사 (1-3px 안에서)
+  //   4) 다른 모든 픽셀 (배경·표 테두리·이미지) — 절대 안 건드림
+  //   Telea 없음, snap 없음, 채움 없음. 픽셀 단위 nearest neighbor.
   function paintSingleTextBox(it, allIntersections) {
-    const PAD = 8;
+    const PAD = 4;
     const ix = Math.max(0, Math.floor(it.x - PAD));
     const iy = Math.max(0, Math.floor(it.y - PAD));
     const ex = Math.min(canvas.width, Math.ceil(it.x + it.w + PAD));
     const ey = Math.min(canvas.height, Math.ceil(it.y + it.h + PAD));
     const W = ex - ix, H = ey - iy;
     if (W <= 4 || H <= 4) return;
+    // 1) 원본 영역 추출 + 10배 확대
+    const SCALE = 10;
+    const W2 = W * SCALE, H2 = H * SCALE;
+    const srcCv = document.createElement('canvas');
+    srcCv.width = W; srcCv.height = H;
+    const srcCtx = srcCv.getContext('2d', { willReadFrequently: true });
     const fullImg = ctx.getImageData(ix, iy, W, H);
-    const fd = fullImg.data;
-    // mask = 어두운 픽셀 + AA halo (<200). 임계값 너무 높으면 빽빽한 한글 전체가 마스크 → 뭉개짐
-    //   skip 룰로 밀집 자획 보호
-    const mask = new Uint8Array(W * H);
-    let maskCount = 0;
-    for (let yy = 0; yy < H; yy++) {
-      for (let xx = 0; xx < W; xx++) {
-        const p = (yy * W + xx) * 4;
-        const r = fd[p], g = fd[p+1], b = fd[p+2];
-        if ((r + g + b) / 3 < 215) { mask[yy * W + xx] = 1; maskCount++; }
-      }
+    srcCtx.putImageData(fullImg, 0, 0);
+    const bigCv = document.createElement('canvas');
+    bigCv.width = W2; bigCv.height = H2;
+    const bctx = bigCv.getContext('2d', { willReadFrequently: true });
+    bctx.imageSmoothingEnabled = true; bctx.imageSmoothingQuality = 'high';
+    bctx.drawImage(srcCv, 0, 0, W2, H2);
+    const bigImg = bctx.getImageData(0, 0, W2, H2);
+    const big = bigImg.data;
+
+    // 2) 10배 확대 영역 안에서 어두운 픽셀 찾기 + 가장 가까운 밝은 인접 픽셀 복사
+    //    바깥으로부터 1, 2, 3, ..., 최대 30 픽셀 확장 검사 (10배 = 원본 3px 거리)
+    function isText(p) {
+      return (big[p] + big[p+1] + big[p+2]) / 3 < 200;
     }
-    if (maskCount > W * H * 0.8) {
-      console.debug('skip very dense bbox', it.x, it.y, 'mask%=', (maskCount/(W*H)*100).toFixed(1));
-      return;
-    }
-    // 표 테두리 보호
-    for (const lr of (pg.lineRects || [])) {
-      if (lr.x >= ex || lr.x + lr.w <= ix || lr.y >= ey || lr.y + lr.h <= iy) continue;
-      const x0 = Math.max(0, Math.floor(lr.x - ix));
-      const x1 = Math.min(W, Math.ceil(lr.x + lr.w - ix));
-      const y0 = Math.max(0, Math.floor(lr.y - iy));
-      const y1 = Math.min(H, Math.ceil(lr.y + lr.h - iy));
-      for (let yy = y0; yy < y1; yy++) for (let xx = x0; xx < x1; xx++) mask[yy * W + xx] = 0;
-    }
-    // SCALE — 속도 우선 (이전 100 → 16). 영역당 ~200ms 처리 시간
-    const totalPx = W * H;
-    const SCALE = Math.max(1, Math.min(16, Math.floor(Math.sqrt(100_000 / totalPx))));
-    const TELEA_RADIUS = it.h < 18 ? 3 : (it.h > 30 ? 6 : 4);
-    if (SCALE > 1) {
-      const W2 = W * SCALE, H2 = H * SCALE;
-      const srcCv = document.createElement('canvas');
-      srcCv.width = W; srcCv.height = H;
-      srcCv.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(fd), W, H), 0, 0);
-      const bigCv = document.createElement('canvas');
-      bigCv.width = W2; bigCv.height = H2;
-      const bctx = bigCv.getContext('2d');
-      bctx.imageSmoothingEnabled = true; bctx.imageSmoothingQuality = 'high';
-      bctx.drawImage(srcCv, 0, 0, W2, H2);
-      const bigImg = bctx.getImageData(0, 0, W2, H2);
-      const big = bigImg.data;
-      const bigMask = new Uint8Array(W2 * H2);
-      for (let yy = 0; yy < H; yy++) for (let xx = 0; xx < W; xx++) {
-        if (!mask[yy * W + xx]) continue;
-        for (let dy = 0; dy < SCALE; dy++) for (let dx = 0; dx < SCALE; dx++)
-          bigMask[(yy*SCALE+dy) * W2 + (xx*SCALE+dx)] = 1;
-      }
-      const bigRadius = Math.min(12, Math.max(TELEA_RADIUS, Math.round(TELEA_RADIUS * Math.sqrt(SCALE))));
-      for (let ch = 0; ch < 3; ch++) {
-        const single = new Uint8Array(W2 * H2);
-        for (let i = 0, j = ch; i < single.length; i++, j += 4) single[i] = big[j];
-        InpaintTelea(W2, H2, single, new Uint8Array(bigMask), bigRadius);
-        for (let i = 0, j = ch; i < single.length; i++, j += 4) big[j] = single[i];
-      }
-      // 다운샘플
-      for (let yy = 0; yy < H; yy++) {
-        for (let xx = 0; xx < W; xx++) {
-          if (!mask[yy * W + xx]) continue;
-          let sR=0, sG=0, sB=0;
-          for (let dy = 0; dy < SCALE; dy++) for (let dx = 0; dx < SCALE; dx++) {
-            const sp = ((yy*SCALE+dy) * W2 + (xx*SCALE+dx)) * 4;
-            sR += big[sp]; sG += big[sp+1]; sB += big[sp+2];
+    const out = new Uint8ClampedArray(big);  // 결과 버퍼
+    for (let yy = 0; yy < H2; yy++) {
+      for (let xx = 0; xx < W2; xx++) {
+        const p = (yy * W2 + xx) * 4;
+        if (!isText(p)) continue;  // 배경/테두리 — 안 건드림
+        // 인접에서 밝은 픽셀 찾기
+        let found = false;
+        for (let radius = 1; radius <= 30 && !found; radius++) {
+          for (let i = -radius; i <= radius && !found; i++) {
+            // 위/아래/좌/우 4면
+            for (const [dy, dx] of [[-radius, i], [radius, i], [i, -radius], [i, radius]]) {
+              const nx = xx + dx, ny = yy + dy;
+              if (nx < 0 || ny < 0 || nx >= W2 || ny >= H2) continue;
+              const np = (ny * W2 + nx) * 4;
+              if (!isText(np)) {
+                out[p] = big[np]; out[p+1] = big[np+1]; out[p+2] = big[np+2];
+                found = true;
+                break;
+              }
+            }
           }
-          const cnt = SCALE * SCALE;
-          const dst = (yy * W + xx) * 4;
-          fd[dst] = Math.round(sR/cnt); fd[dst+1] = Math.round(sG/cnt); fd[dst+2] = Math.round(sB/cnt);
         }
-      }
-    } else {
-      for (let ch = 0; ch < 3; ch++) {
-        const single = new Uint8Array(W * H);
-        for (let i = 0, j = ch; i < single.length; i++, j += 4) single[i] = fd[j];
-        InpaintTelea(W, H, single, new Uint8Array(mask), TELEA_RADIUS);
-        for (let i = 0, j = ch; i < single.length; i++, j += 4) fd[j] = single[i];
+        if (!found) { out[p] = 255; out[p+1] = 255; out[p+2] = 255; }
       }
     }
-    // 흰 배경 snap
-    let bgC = 0, totNon = 0;
-    for (let i = 0; i < mask.length; i++) {
-      if (mask[i]) continue;
-      totNon++;
-      const p = i * 4;
-      if ((fd[p] + fd[p+1] + fd[p+2]) / 3 >= 245) bgC++;
-    }
-    if (bgC > totNon * 0.5) {
-      for (let i = 0; i < mask.length; i++) {
-        if (!mask[i]) continue;
-        const p = i * 4;
-        if ((fd[p] + fd[p+1] + fd[p+2]) / 3 > 140) {  // 140 이상 = 끝까지 적극적 snap
-          fd[p] = 255; fd[p+1] = 255; fd[p+2] = 255;
-        }
+
+    // 3) 다운샘플 — 결과를 원본 1배로
+    bctx.putImageData(new ImageData(out, W2, H2), 0, 0);
+    srcCtx.imageSmoothingEnabled = true;
+    srcCtx.imageSmoothingQuality = 'high';
+    srcCtx.clearRect(0, 0, W, H);
+    srcCtx.drawImage(bigCv, 0, 0, W, H);
+    const finalImg = srcCtx.getImageData(0, 0, W, H);
+    const fd = finalImg.data;
+    const orig = fullImg.data;
+
+    // 4) 원본과 비교 — 어두운 픽셀이었던 곳만 결과로 교체. 나머지는 원본 그대로
+    for (let i = 0; i < orig.length; i += 4) {
+      const wasText = (orig[i] + orig[i+1] + orig[i+2]) / 3 < 200;
+      if (!wasText) {
+        fd[i] = orig[i]; fd[i+1] = orig[i+1]; fd[i+2] = orig[i+2]; fd[i+3] = orig[i+3];
       }
     }
-    ctx.putImageData(fullImg, ix, iy);
+    ctx.putImageData(finalImg, ix, iy);
   }
 
   // 🎨 Batch inpaint — 모든 textBox 영역을 한 번에 mask 로 묶어 inpaint
@@ -4321,6 +4296,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v23.85", date: "2026-05-08", desc: "🔄 글자 지우기 처음부터 다시 (사용자 요청). 10x 확대 → 어두운 픽셀만 → 가장 가까운 밝은 픽셀 복사 → 다운샘플. Telea 없음, snap 없음, 채움 없음. 배경·표 테두리 절대 안 건드림." },
   { version: "v23.84", date: "2026-05-08", desc: "🩹 snap 170→140 (한 단계 더 적극적). 잔재 6.76% → 더 적게 목표." },
   { version: "v23.83", date: "2026-05-08", desc: "🩹 white snap 임계값 200→170 (적극적). 분석 결과 180-199 범위 잔재 4% → snap 으로 제거." },
   { version: "v23.82", date: "2026-05-08", desc: "🩹 white snap 완화 — 비-마스크 50%+ 흰색이면 200 이상 픽셀 모두 순백 강제. 회색 잔재 추가 감소." },
