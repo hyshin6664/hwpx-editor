@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.98<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.99<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -2015,9 +2015,15 @@ async function mountPdf(file) {
         allLineRects.push({ x: f.x + f.w - 1, y: f.y, w: 1, h: f.h, color: [128,128,128] });
       }
       const darkLineRects = allLineRects;
+      // 🛡️ v23.99 — 원본 canvas 클론 보관 (erase 후 표 영역 100% 복원용)
+      const originalCanvas = document.createElement('canvas');
+      originalCanvas.width = canvas.width;
+      originalCanvas.height = canvas.height;
+      originalCanvas.getContext('2d').drawImage(canvas, 0, 0);
       const pageState = {
         pageIndex: i - 1,
         canvas, overlay,
+        originalCanvas,             // erase 후 표/선 복원용 원본 (텍스트 포함이지만 lineRect 영역만 사용)
         viewport, scale: SCALE,
         pdfPageWidth, pdfPageHeight,
         edits: [],
@@ -2412,24 +2418,30 @@ function attachPageInteractions(pg) {
       }
     }
     ctx.putImageData(fullImg, ix, iy);
-    // 🛡️ 안전망 — 작업 영역 안의 lineRects 를 위에 다시 그려서 미세 손상 보정
-    //   borderMask 로 거의 안 건드리지만 dilation/halo 로 1px 침범 가능 → 무조건 복구
-    if (lr.length) {
-      ctx.save();
-      ctx.fillStyle = '#000';
-      for (const r of lr) {
-        // 작업영역과 교차?
-        const rx0 = Math.max(ix, r.x);
-        const ry0 = Math.max(iy, r.y);
-        const rx1 = Math.min(ex, r.x + r.w);
-        const ry1 = Math.min(ey, r.y + r.h);
-        if (rx1 <= rx0 || ry1 <= ry0) continue;
-        // 원래 색이 회색이면 그 색으로
-        const c = r.color || [0,0,0];
-        ctx.fillStyle = `rgb(${c[0]|0},${c[1]|0},${c[2]|0})`;
-        ctx.fillRect(rx0, ry0, rx1 - rx0, ry1 - ry0);
+    // 🛡️ v23.99 표 100% 복원 — 원본 canvas 에서 lineRects 영역을 그대로 drawImage 로 덮음
+    //   원본 픽셀 그대로 복사 → 색·두께·AA 모두 100% 일치. fillRect 추정값보다 정확.
+    //   fillRects 4변도 마찬가지로 복원.
+    if (pg.originalCanvas) {
+      const restoreRects = [];
+      for (const r of (pg.lineRects || [])) restoreRects.push(r);
+      // fillRects 4변 (1px 띠) 도 복원
+      for (const f of (pg.fillRects || [])) {
+        if (f.w < 5 || f.h < 5) continue;
+        restoreRects.push({ x: f.x, y: f.y, w: f.w, h: 1 });
+        restoreRects.push({ x: f.x, y: f.y + f.h - 1, w: f.w, h: 1 });
+        restoreRects.push({ x: f.x, y: f.y, w: 1, h: f.h });
+        restoreRects.push({ x: f.x + f.w - 1, y: f.y, w: 1, h: f.h });
       }
-      ctx.restore();
+      for (const r of restoreRects) {
+        // 작업영역과 교차?
+        const rx0 = Math.max(ix, Math.floor(r.x) - 1);
+        const ry0 = Math.max(iy, Math.floor(r.y) - 1);
+        const rx1 = Math.min(ex, Math.ceil(r.x + r.w) + 1);
+        const ry1 = Math.min(ey, Math.ceil(r.y + r.h) + 1);
+        const rw = rx1 - rx0, rh = ry1 - ry0;
+        if (rw <= 0 || rh <= 0) continue;
+        ctx.drawImage(pg.originalCanvas, rx0, ry0, rw, rh, rx0, ry0, rw, rh);
+      }
     }
   }
   // 폰트 이름 매핑 (PDF.js fontName → CSS font-family)
@@ -4332,6 +4344,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v23.99", date: "2026-05-08", desc: "🛡️ 표 100% 원본 복원 — PDF 로드 시점에 canvas 클론 보관 → erase 후 lineRects/fillRect 4변 영역을 원본에서 drawImage 로 그대로 덮음. 색·두께·AA 100% 일치. fillRect 추정값보다 정확." },
   { version: "v23.98", date: "2026-05-08", desc: "🛡️ 표 100% 보호 (사용자 요청 — 표만 우선 완벽). lineRects 색상 필터(avg<180) 제거 → 연한 회색 표 테두리도 보호. fillRects 4변 자동 추가 → 셀 경계 보호. borderMask 2px 패딩 → AA 도 보호. lineRects 재-fillRect 안전망 유지." },
   { version: "v23.97", date: "2026-05-08", desc: "🔬 템플릿 매칭 폐기 (사각형 블록 마스크 원인 — 폰트 fallback 시 .notdef 블록 그려짐). 행 단위 배경 밝기 측정 → 그 행 배경보다 30 이상 어두운 픽셀만 투명 처리. 폰트 일치 필요 X. 회색 셀(배경 너무 어두움)은 자동 skip." },
   { version: "v23.96", date: "2026-05-08", desc: "🩹 잔상 제거 + 표 복구 (사용자 요청). 1px dilation + 임계값 240 으로 AA halo 흡수해 잔상 X. borderMask 로 표 픽셀 보호 + 끝나고 lineRects 원래 색으로 재-fillRect → 글자가 표에 닿았던 부분도 깔끔 복구." },
