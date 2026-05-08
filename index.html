@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.106<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.107<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -2538,13 +2538,20 @@ function attachPageInteractions(pg) {
   //   보간/블러 없음 → 뭉개짐 0. 단순한 직접 복사.
   function fillErasedPixels(intersections) {
     for (const it of intersections) {
-      const PAD = 4;
+      // PAD 30 — textBox 밖 30px 까지 함께 읽어서 인접 배경색 샘플링 가능하게
+      //   (작은 PAD 였을 때 textBox 가 글자로 꽉 차면 fallback 흰색 → 흰 블록 버그)
+      const PAD = 30;
       const ix = Math.max(0, Math.floor(it.x - PAD));
       const iy = Math.max(0, Math.floor(it.y - PAD));
       const ex = Math.min(canvas.width, Math.ceil(it.x + it.w + PAD));
       const ey = Math.min(canvas.height, Math.ceil(it.y + it.h + PAD));
       const W = ex - ix, H = ey - iy;
       if (W < 2 || H < 2) continue;
+      // 원본 textBox 영역 (filling 대상 범위) — PAD 영역은 검색용일 뿐 fill 안 함
+      const fillX0 = Math.max(0, Math.floor(it.x) - ix);
+      const fillY0 = Math.max(0, Math.floor(it.y) - iy);
+      const fillX1 = Math.min(W, Math.ceil(it.x + it.w) - ix);
+      const fillY1 = Math.min(H, Math.ceil(it.y + it.h) - iy);
       // 표 테두리 보호 마스크 — 단, textBox 내부에 들어있는 line 은 밑줄/취소선으로 판정해서 제외
       const borderMask = new Uint8Array(W * H);
       for (const r of (pg.lineRects || [])) {
@@ -2566,12 +2573,13 @@ function attachPageInteractions(pg) {
       }
       const img = ctx.getImageData(ix, iy, W, H);
       const d = img.data;
-      // 1차: 투명 픽셀을 인접 색으로 채움
-      for (let yy = 0; yy < H; yy++) {
-        for (let xx = 0; xx < W; xx++) {
+      // 1차: textBox 영역 안의 투명 픽셀을 (PAD 까지 확장된 영역에서) 인접 불투명 색으로 채움
+      for (let yy = fillY0; yy < fillY1; yy++) {
+        for (let xx = fillX0; xx < fillX1; xx++) {
           const i = (yy * W + xx) * 4;
           if (d[i+3] >= 250) continue;
           let r = -1, g = -1, b = -1;
+          // 좌측 (textBox 밖 PAD 까지)
           for (let nxx = xx - 1; nxx >= 0; nxx--) {
             const ni = (yy * W + nxx) * 4;
             if (d[ni+3] >= 250) { r = d[ni]; g = d[ni+1]; b = d[ni+2]; break; }
@@ -2592,11 +2600,10 @@ function attachPageInteractions(pg) {
           else { d[i] = 255; d[i+1] = 255; d[i+2] = 255; d[i+3] = 255; }
         }
       }
-      // 2차 정리 — 1차에서 놓친 옅은 텍스트 잔재 제거 (사용자 요청 — 완성도 ↑)
-      //   각 행에서 borderMask 밖 픽셀의 최빈 밝기를 배경으로 추정
-      //   배경보다 8 이상 어두운 픽셀(짧은 dash, dot 등)도 같은 행 우세 색으로 교체
-      for (let yy = 0; yy < H; yy++) {
-        // 행의 우세 색 (RGB 최빈값 근사 — 평균 대신 중앙값 사용)
+      // 2차 정리 — fillBounds 안의 옅은 텍스트 잔재 제거 (행 단위 우세색 교체)
+      //   PAD 영역 픽셀로 행 우세색을 잘 추정 가능 (textBox 밖 = 거의 배경)
+      for (let yy = fillY0; yy < fillY1; yy++) {
+        // 행 전체(PAD 포함) 에서 우세 색 추정 — textBox 밖 픽셀 위주로 잡힘
         const rs = [], gs = [], bs = [];
         for (let xx = 0; xx < W; xx++) {
           const p = yy * W + xx;
@@ -2607,20 +2614,16 @@ function attachPageInteractions(pg) {
         }
         if (rs.length < 8) continue;
         rs.sort((a,b)=>a-b); gs.sort((a,b)=>a-b); bs.sort((a,b)=>a-b);
-        // 상위 60% 밝기 영역의 중앙값 = 배경 (텍스트는 어두워서 하위에 몰림)
         const startIdx = Math.floor(rs.length * 0.4);
         const midIdx = Math.floor((rs.length + startIdx) / 2);
         const bgR = rs[midIdx], bgG = gs[midIdx], bgB = bs[midIdx];
         const bgAvg = (bgR + bgG + bgB) / 3;
-        // 배경보다 어두운 픽셀 잡기 — borderMask 밖만
-        for (let xx = 0; xx < W; xx++) {
+        for (let xx = fillX0; xx < fillX1; xx++) {
           const p = yy * W + xx;
           if (borderMask[p]) continue;
           const i = p * 4;
           const v = (d[i] + d[i+1] + d[i+2]) / 3;
           if (v < bgAvg - 8 && v < 230) {
-            // 컬러(빨강 등) 텍스트 잔재 검출: 채도가 높으면 텍스트 → 교체
-            // 회색 음영(border AA)은 채도 낮으므로 보호
             const maxC = Math.max(d[i], d[i+1], d[i+2]);
             const minC = Math.min(d[i], d[i+1], d[i+2]);
             const sat = maxC - minC;
@@ -4537,6 +4540,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v23.107", date: "2026-05-08", desc: "🩹 흰 블록 버그 수정 — fillErasedPixels 가 textBox 안에서만 인접색을 찾아서 글자가 빽빽하면 fallback 흰색이 됨. 검색 영역을 textBox 밖 30px(PAD) 까지 확장 → 셀 배경(회색·연한 색)이 정확히 샘플링됨. fill 대상은 여전히 textBox 영역만." },
   { version: "v23.106", date: "2026-05-08", desc: "🩹 [지우고 채우기] 밑줄·취소선도 제거 — textBox 안쪽에 완전히 들어있고 길이가 textBox 의 130% 이내면 밑줄/취소선으로 판정 → borderMask 에서 제외 → 같이 지움. 표 테두리(textBox 밖)는 여전히 보호." },
   { version: "v23.105", date: "2026-05-08", desc: "🪄 [지우고 채우기] 완성도 ↑ — 2차 정리 패스 추가. 1차 erase 가 놓친 옅은 dash/dot/컬러 텍스트 잔재도 같은 행 우세 색으로 교체. 표 테두리 borderMask 보호 유지 (표는 안 건드림)." },
   { version: "v23.104", date: "2026-05-08", desc: "🪄 [지우고 채우기] 도구 추가 — 글자 지우고 그 자리를 같은 행 인접 픽셀 색으로 직접 복사해 채움. 뭉개짐 X (블러/보간 없음). 기존 [글자만 지우기] 는 그대로 유지." },
