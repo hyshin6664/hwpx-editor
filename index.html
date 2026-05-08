@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.91<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.92<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -2395,12 +2395,31 @@ function attachPageInteractions(pg) {
       }
     }
 
+    // 🛡️ 표 테두리 보호 마스크 — pg.lineRects 위 픽셀은 절대 안 지움 (사용자 요청)
+    //   각 line rect 의 영역 + 1px 패딩 → 작업영역(W×H) 좌표계로 변환해서 borderMask 빌드
+    const borderMask = new Uint8Array(W * H);
+    const lr = pg.lineRects || [];
+    for (const r of lr) {
+      const lx0 = Math.max(0, Math.floor(r.x - 1) - ix);
+      const ly0 = Math.max(0, Math.floor(r.y - 1) - iy);
+      const lx1 = Math.min(W, Math.ceil(r.x + r.w + 1) - ix);
+      const ly1 = Math.min(H, Math.ceil(r.y + r.h + 1) - iy);
+      if (lx1 <= 0 || ly1 <= 0 || lx0 >= W || ly0 >= H) continue;
+      // line rect 은 가로/세로 얇은 사각형. 두께가 작은 쪽이 실제 선이고 큰 쪽이 길이.
+      // 안쪽까지 다 보호 (테두리는 보통 두께 1~2px 라 영향 작음)
+      for (let yy = ly0; yy < ly1; yy++) {
+        for (let xx = lx0; xx < lx1; xx++) {
+          borderMask[yy * W + xx] = 1;
+        }
+      }
+    }
     // ② 지우기 — 마스크 영역 안에서 배경(흰색)보다 어두운 픽셀만 투명 처리
+    //   borderMask 인 픽셀은 건너뜀 (표 테두리 절대 보호)
     const fullImg = ctx.getImageData(ix, iy, W, H);
     const fd = fullImg.data;
     const erased = new Uint8Array(W * H);
     for (let i = 0, p = 0; i < fd.length; i += 4, p++) {
-      if (!dil[p]) continue;
+      if (!dil[p] || borderMask[p]) continue;
       const v = (fd[i] + fd[i+1] + fd[i+2]) / 3;
       if (v < 235) {
         fd[i] = 255; fd[i+1] = 255; fd[i+2] = 255; fd[i+3] = 0;
@@ -2413,7 +2432,7 @@ function attachPageInteractions(pg) {
       for (let yy = 0; yy < H; yy++) {
         for (let xx = 0; xx < W; xx++) {
           const p = yy * W + xx;
-          if (erased[p] || !dil[p]) continue;
+          if (erased[p] || !dil[p] || borderMask[p]) continue;
           let adj = false;
           for (let dy = -1; dy <= 1 && !adj; dy++) {
             for (let dx = -1; dx <= 1 && !adj; dx++) {
@@ -2435,6 +2454,25 @@ function attachPageInteractions(pg) {
       erased.set(next);
     }
     ctx.putImageData(fullImg, ix, iy);
+    // 🛡️ 안전망 — 작업 영역 안의 lineRects 를 위에 다시 그려서 미세 손상 보정
+    //   borderMask 로 거의 안 건드리지만 dilation/halo 로 1px 침범 가능 → 무조건 복구
+    if (lr.length) {
+      ctx.save();
+      ctx.fillStyle = '#000';
+      for (const r of lr) {
+        // 작업영역과 교차?
+        const rx0 = Math.max(ix, r.x);
+        const ry0 = Math.max(iy, r.y);
+        const rx1 = Math.min(ex, r.x + r.w);
+        const ry1 = Math.min(ey, r.y + r.h);
+        if (rx1 <= rx0 || ry1 <= ry0) continue;
+        // 원래 색이 회색이면 그 색으로
+        const c = r.color || [0,0,0];
+        ctx.fillStyle = `rgb(${c[0]|0},${c[1]|0},${c[2]|0})`;
+        ctx.fillRect(rx0, ry0, rx1 - rx0, ry1 - ry0);
+      }
+      ctx.restore();
+    }
   }
   // 폰트 이름 매핑 (PDF.js fontName → CSS font-family)
   function mapFontForCanvas(name) {
@@ -4343,6 +4381,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v23.92", date: "2026-05-08", desc: "🛡️ 표 테두리 절대 보호 (사용자 요청). pg.lineRects → borderMask 로 침범 픽셀 erase 차단 + 작업영역 안 lineRects 를 원래 색으로 다시 fillRect 안전망. 표는 절대 안 지워짐." },
   { version: "v23.91", date: "2026-05-08", desc: "🎯 진짜 원인 픽스 — 교집합 사각형만 paint 함수에 넘겨서 transform/fontName/fontHeight 가 다 빠지고 시스템 폰트로 추측 → 블록 뭉개짐. 이제 원본 textBox 정보 전체 보존해서 PDF.js 임베드 폰트 + 정확한 baseline 으로 마스크 생성." },
   { version: "v23.90", date: "2026-05-08", desc: "🩹 v23.89 블록 뭉개짐 핫픽스 — setTransform+1px 폰트 트릭이 1px 글자를 먼저 래스터화 후 스케일 → 블록 뭉개짐 원인이었음. 단순 fillText + 실제 fontPx + PDF.js 임베드 폰트명으로 회귀 (안티앨리어싱 정상). baseline 은 transform 의 (e,f) 그대로 사용." },
   { version: "v23.89", date: "2026-05-08", desc: "🔁 글자 지우기 완전 리셋 (사용자 요청). 2단계 파이프라인 — ① 인식: PDF.js 가 임베드한 진짜 폰트(g_d0_fN)와 글자별 transform 행렬로 hidden canvas 에 픽셀 단위 정확 마스크 ② 지우기: 마스크 안에서만 어두운 픽셀 투명 처리 + halo 3회. 시스템 폰트 추측 X → 로고 잔재 해결." },
