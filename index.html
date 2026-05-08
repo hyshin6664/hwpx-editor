@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.97<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.98<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -1998,12 +1998,23 @@ async function mountPdf(file) {
       }
 
       // 🎯 사용자 요청: 검은 직선만 표로 인식, 색은 무시
-      // lineRects 중 어두운 색만 (회색 200 이하 평균) 유지, 나머지는 표가 아닌 그림으로 간주
-      const darkLineRects = lineRects.filter(r => {
-        const c = r.color || [0,0,0];
-        const avg = (c[0] + c[1] + c[2]) / 3;
-        return avg < 180;  // 검은~진한 회색만
-      });
+      // 🛡️ v23.98 — 모든 lineRects 보호 (사용자 요청 — 표 절대 안 지워지게)
+      //   이전엔 avg < 180 만 → 연한 회색 표 테두리 누락되어 erase 시 지워졌음.
+      //   이제 색상 무관 모든 line/path 보호. fillRects 의 테두리도 추가 보호.
+      const allLineRects = lineRects.slice();
+      // fillRects 의 4변(상/하/좌/우 1px 띠)도 lineRects 에 추가 → 셀 경계 보호
+      for (const f of fillRects) {
+        if (f.w < 5 || f.h < 5) continue;
+        // 위
+        allLineRects.push({ x: f.x, y: f.y, w: f.w, h: 1, color: [128,128,128] });
+        // 아래
+        allLineRects.push({ x: f.x, y: f.y + f.h - 1, w: f.w, h: 1, color: [128,128,128] });
+        // 왼
+        allLineRects.push({ x: f.x, y: f.y, w: 1, h: f.h, color: [128,128,128] });
+        // 오른
+        allLineRects.push({ x: f.x + f.w - 1, y: f.y, w: 1, h: f.h, color: [128,128,128] });
+      }
+      const darkLineRects = allLineRects;
       const pageState = {
         pageIndex: i - 1,
         canvas, overlay,
@@ -2011,8 +2022,8 @@ async function mountPdf(file) {
         pdfPageWidth, pdfPageHeight,
         edits: [],
         textBoxes,
-        lineRects: darkLineRects,  // 검은 직선만
-        fillRects: [],              // 색 인식 X (사용자 요청)
+        lineRects: darkLineRects,  // 모든 색 + fillRects 4변 포함 (표 절대 보호)
+        fillRects: fillRects,       // 셀 배경 (사용자 요청 — erase 보호용)
         imageRects,                 // 이미지 영역 (paintImage* ops)
       };
       pdfState.pages.push(pageState);
@@ -2350,14 +2361,14 @@ function attachPageInteractions(pg) {
     const W = ex - ix, H = ey - iy;
     if (W <= 4 || H <= 4) return;
 
-    // 🛡️ 표 테두리 보호 마스크
+    // 🛡️ 표 테두리 보호 마스크 (2px 패딩 — 안티앨리어싱까지 보호)
     const borderMask = new Uint8Array(W * H);
     const lr = pg.lineRects || [];
     for (const r of lr) {
-      const lx0 = Math.max(0, Math.floor(r.x) - ix);
-      const ly0 = Math.max(0, Math.floor(r.y) - iy);
-      const lx1 = Math.min(W, Math.ceil(r.x + r.w) - ix);
-      const ly1 = Math.min(H, Math.ceil(r.y + r.h) - iy);
+      const lx0 = Math.max(0, Math.floor(r.x - 2) - ix);
+      const ly0 = Math.max(0, Math.floor(r.y - 2) - iy);
+      const lx1 = Math.min(W, Math.ceil(r.x + r.w + 2) - ix);
+      const ly1 = Math.min(H, Math.ceil(r.y + r.h + 2) - iy);
       if (lx1 <= 0 || ly1 <= 0 || lx0 >= W || ly0 >= H) continue;
       for (let yy = ly0; yy < ly1; yy++) {
         for (let xx = lx0; xx < lx1; xx++) {
@@ -4321,6 +4332,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v23.98", date: "2026-05-08", desc: "🛡️ 표 100% 보호 (사용자 요청 — 표만 우선 완벽). lineRects 색상 필터(avg<180) 제거 → 연한 회색 표 테두리도 보호. fillRects 4변 자동 추가 → 셀 경계 보호. borderMask 2px 패딩 → AA 도 보호. lineRects 재-fillRect 안전망 유지." },
   { version: "v23.97", date: "2026-05-08", desc: "🔬 템플릿 매칭 폐기 (사각형 블록 마스크 원인 — 폰트 fallback 시 .notdef 블록 그려짐). 행 단위 배경 밝기 측정 → 그 행 배경보다 30 이상 어두운 픽셀만 투명 처리. 폰트 일치 필요 X. 회색 셀(배경 너무 어두움)은 자동 skip." },
   { version: "v23.96", date: "2026-05-08", desc: "🩹 잔상 제거 + 표 복구 (사용자 요청). 1px dilation + 임계값 240 으로 AA halo 흡수해 잔상 X. borderMask 로 표 픽셀 보호 + 끝나고 lineRects 원래 색으로 재-fillRect → 글자가 표에 닿았던 부분도 깔끔 복구." },
   { version: "v23.95", date: "2026-05-08", desc: "🔕 부팅 시 \"이전에 작업하던 내용\" 프롬프트 제거 (사용자 요청 — 귀찮음)." },
