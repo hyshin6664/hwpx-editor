@@ -1,5 +1,5 @@
 // Solbox Docs SW — index.html 은 항상 네트워크 우선(새 버전 즉시 반영), 그 외만 cache-first
-const CACHE = 'solbox-docs-v20';
+const CACHE = 'solbox-docs-v21';
 const ASSETS = ['./manifest.json', './icon-192.svg', './icon-512.svg', './voice-worker.js'];
 // Moonshine 모델 + transformers.js + VAD 는 Range request 를 자주 쓰므로 별도 캐시
 const MOONSHINE_CACHE = 'solbox-moonshine-v1';
