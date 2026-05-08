@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.95<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.96<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -2373,13 +2373,27 @@ function attachPageInteractions(pg) {
     tctx.fillText(it.str, baseX, baseY);
     const tplData = tctx.getImageData(0, 0, W, H).data;
 
-    // 마스크 (템플릿 어두운 픽셀 = 글자 위치). dilation 없음 — 글자 픽셀만 정확히, 다른 건 안 건드림
+    // 마스크 (템플릿 어두운 픽셀 = 글자 위치) + 1px dilate (AA halo 잔상 흡수)
     const tplMask = new Uint8Array(W * H);
     for (let i = 0, p = 0; i < tplData.length; i += 4, p++) {
       const v = (tplData[i] + tplData[i+1] + tplData[i+2]) / 3;
-      if (v < 200) tplMask[p] = 1;
+      if (v < 220) tplMask[p] = 1;
     }
-    const dil = tplMask;  // dilation 제거 (사용자 요청 — 표 침범 방지)
+    const dil = new Uint8Array(tplMask);
+    for (let yy = 0; yy < H; yy++) {
+      for (let xx = 0; xx < W; xx++) {
+        if (tplMask[yy * W + xx]) continue;
+        let near = false;
+        for (let dy = -1; dy <= 1 && !near; dy++) {
+          for (let dx = -1; dx <= 1 && !near; dx++) {
+            const nx = xx + dx, ny = yy + dy;
+            if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+            if (tplMask[ny * W + nx]) near = true;
+          }
+        }
+        if (near) dil[yy * W + xx] = 1;
+      }
+    }
 
     // 🛡️ 표 테두리 보호 마스크 — pg.lineRects 위 픽셀은 절대 안 지움 (사용자 요청)
     //   각 line rect 의 영역 + 1px 패딩 → 작업영역(W×H) 좌표계로 변환해서 borderMask 빌드
@@ -2399,14 +2413,14 @@ function attachPageInteractions(pg) {
         }
       }
     }
-    // ② 지우기 — 템플릿 마스크 픽셀 + borderMask 밖 + 어두운 픽셀만 투명 처리
-    //   dilation/halo 없음 → 표·다른 픽셀 절대 안 건드림. 글자 본체만.
+    // ② 지우기 — dil 마스크 안 + borderMask 밖 + 어두운 픽셀(AA halo 포함, v<240) 투명
+    //   borderMask 가 표 픽셀 절대 보호. lineRects 재-fillRect 안전망이 침범 복구.
     const fullImg = ctx.getImageData(ix, iy, W, H);
     const fd = fullImg.data;
     for (let i = 0, p = 0; i < fd.length; i += 4, p++) {
       if (!dil[p] || borderMask[p]) continue;
       const v = (fd[i] + fd[i+1] + fd[i+2]) / 3;
-      if (v < 200) {
+      if (v < 240) {
         fd[i] = 255; fd[i+1] = 255; fd[i+2] = 255; fd[i+3] = 0;
       }
     }
@@ -4331,6 +4345,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v23.96", date: "2026-05-08", desc: "🩹 잔상 제거 + 표 복구 (사용자 요청). 1px dilation + 임계값 240 으로 AA halo 흡수해 잔상 X. borderMask 로 표 픽셀 보호 + 끝나고 lineRects 원래 색으로 재-fillRect → 글자가 표에 닿았던 부분도 깔끔 복구." },
   { version: "v23.95", date: "2026-05-08", desc: "🔕 부팅 시 \"이전에 작업하던 내용\" 프롬프트 제거 (사용자 요청 — 귀찮음)." },
   { version: "v23.94", date: "2026-05-08", desc: "✂️ 글자 픽셀만 정확히 (사용자 요청 — 다른 거 절대 안 지움). dilation 제거 + halo 제거 + 배경색 채우기 제거. 템플릿 마스크 안 + 표 테두리 밖 + 어두운 픽셀만 투명 처리. 표/배경/주변 픽셀 모두 안 건드림." },
   { version: "v23.93", date: "2026-05-08", desc: "🎨 셀 배경색 보존 — 투명(alpha=0)으로 지우니 회색 셀 배경까지 사라져 흰 블록처럼 보이던 문제. dil/border 밖 픽셀 평균색으로 배경색 추정 후 그 색으로 메움. 회색 셀은 회색 그대로, 흰 셀은 흰색." },
