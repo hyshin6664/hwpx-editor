@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.87<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.88<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -2387,12 +2387,43 @@ function attachPageInteractions(pg) {
     }
     // 3) 메인 canvas + 템플릿 둘 다 어두운 픽셀만 투명 교체 (사용자 요청 - 흰색 X)
     //    alpha=0 → 캔버스 배경 흰색이라 시각적으로 흰색이지만 합성 시 투명 유지
-    for (let i = 0; i < fd.length; i += 4) {
-      if (!dil[i / 4]) continue;
+    const erased = new Uint8Array(W * H);
+    for (let i = 0, p = 0; i < fd.length; i += 4, p++) {
+      if (!dil[p]) continue;
       const v = (fd[i] + fd[i+1] + fd[i+2]) / 3;
-      if (v < 215) {
+      if (v < 230) {
         fd[i] = 255; fd[i+1] = 255; fd[i+2] = 255; fd[i+3] = 0;  // 투명
+        erased[p] = 1;
       }
+    }
+    // 4) 희미한 잔재(AA halo) 제거 — 이미 지운 픽셀 인접 + dil 영역 안 + brightness<248
+    //    dil 마스크로 한정되어 로고/표는 안전. 3회 반복으로 두꺼운 halo 도 흡수.
+    for (let pass = 0; pass < 3; pass++) {
+      const next = new Uint8Array(erased);
+      for (let yy = 0; yy < H; yy++) {
+        for (let xx = 0; xx < W; xx++) {
+          const p = yy * W + xx;
+          if (erased[p] || !dil[p]) continue;
+          // 인접 8방향에 이미 지운 픽셀이 있나
+          let adj = false;
+          for (let dy = -1; dy <= 1 && !adj; dy++) {
+            for (let dx = -1; dx <= 1 && !adj; dx++) {
+              if (!dx && !dy) continue;
+              const nx = xx + dx, ny = yy + dy;
+              if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+              if (erased[ny * W + nx]) adj = true;
+            }
+          }
+          if (!adj) continue;
+          const i = p * 4;
+          const v = (fd[i] + fd[i+1] + fd[i+2]) / 3;
+          if (v < 248) {
+            fd[i] = 255; fd[i+1] = 255; fd[i+2] = 255; fd[i+3] = 0;
+            next[p] = 1;
+          }
+        }
+      }
+      erased.set(next);
     }
     ctx.putImageData(fullImg, ix, iy);
   }
@@ -4295,6 +4326,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v23.88", date: "2026-05-08", desc: "🩹 희미한 잔재 제거 — 임계값 215→230 + halo 3회 반복 흡수 (인접 + dil 영역 + brightness<248). dil 마스크 한정이라 로고/표는 안전. 자국 안 남게." },
   { version: "v23.87", date: "2026-05-08", desc: "🩹 글자 지우기 — 투명 픽셀(alpha=0) 교체 (사용자 요청, 흰색 X). dilation 5→2px (주변 영향 최소화 - 로고/표 보호). 글자 픽셀만 정확히." },
   { version: "v23.86", date: "2026-05-08", desc: "🎯 글자 템플릿 매칭 (사용자 제안 - 등록 글자만 능동 삭제). textBox.str 의 실제 글자를 hidden canvas 에 동일 폰트로 렌더 → 템플릿. 템플릿 어두운 위치 + 메인 canvas 동일 위치 어두움 = 진짜 텍스트 → 흰색 직접 교체. 흐림 X 업스케일 X." },
   { version: "v23.85", date: "2026-05-08", desc: "🔄 글자 지우기 처음부터 다시 (사용자 요청). 10x 확대 → 어두운 픽셀만 → 가장 가까운 밝은 픽셀 복사 → 다운샘플. Telea 없음, snap 없음, 채움 없음. 배경·표 테두리 절대 안 건드림." },
