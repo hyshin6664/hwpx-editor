@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.101<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.102<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -2453,15 +2453,12 @@ function attachPageInteractions(pg) {
       samples.sort((a, b) => b - a);
       const top25Idx = Math.floor(samples.length * 0.25);
       const bgBrightness = samples[top25Idx];
-      // 표 밖이면 임계값 -15 (잔상까지), 표 안은 -30 (선 보호)
-      const delta = isTableArea ? 30 : 15;
-      const threshold = bgBrightness - delta;
+      // 임계값 -15 (잔상까지 잡기). 표 보호는 borderMask + lineRow/Col + drawImage 복원으로.
+      const threshold = bgBrightness - 15;
       if (threshold < 30) continue;
       for (let xx = 0; xx < W; xx++) {
         const p = yy * W + xx;
-        if (borderMask[p]) continue;
-        // 표 안에서만 휴리스틱 선 보호 적용 (표 밖은 잔상 제거 위해 풀기)
-        if (isTableArea && (lineRowMask[yy] || lineColMask[xx])) continue;
+        if (borderMask[p] || lineRowMask[yy] || lineColMask[xx]) continue;
         const i = p * 4;
         const v = (fd[i] + fd[i+1] + fd[i+2]) / 3;
         if (v < threshold) {
@@ -2470,27 +2467,25 @@ function attachPageInteractions(pg) {
         }
       }
     }
-    // 표 밖에서만 halo 1회 (지운 픽셀 인접 + 어두운 픽셀 → 흡수)
-    if (!isTableArea) {
-      for (let yy = 0; yy < H; yy++) {
-        for (let xx = 0; xx < W; xx++) {
-          const p = yy * W + xx;
-          if (erasedMask[p] || borderMask[p]) continue;
-          let adj = false;
-          for (let dy = -1; dy <= 1 && !adj; dy++) {
-            for (let dx = -1; dx <= 1 && !adj; dx++) {
-              if (!dx && !dy) continue;
-              const nx = xx + dx, ny = yy + dy;
-              if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
-              if (erasedMask[ny * W + nx]) adj = true;
-            }
+    // halo 1회 — 지운 픽셀 인접 + 어두운 픽셀(v<245) 흡수. 표 영역도 동일 (drawImage 가 복구)
+    for (let yy = 0; yy < H; yy++) {
+      for (let xx = 0; xx < W; xx++) {
+        const p = yy * W + xx;
+        if (erasedMask[p] || borderMask[p] || lineRowMask[yy] || lineColMask[xx]) continue;
+        let adj = false;
+        for (let dy = -1; dy <= 1 && !adj; dy++) {
+          for (let dx = -1; dx <= 1 && !adj; dx++) {
+            if (!dx && !dy) continue;
+            const nx = xx + dx, ny = yy + dy;
+            if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+            if (erasedMask[ny * W + nx]) adj = true;
           }
-          if (!adj) continue;
-          const i = p * 4;
-          const v = (fd[i] + fd[i+1] + fd[i+2]) / 3;
-          if (v < 245) {
-            fd[i] = 255; fd[i+1] = 255; fd[i+2] = 255; fd[i+3] = 0;
-          }
+        }
+        if (!adj) continue;
+        const i = p * 4;
+        const v = (fd[i] + fd[i+1] + fd[i+2]) / 3;
+        if (v < 245) {
+          fd[i] = 255; fd[i+1] = 255; fd[i+2] = 255; fd[i+3] = 0;
         }
       }
     }
@@ -4421,6 +4416,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v23.102", date: "2026-05-08", desc: "🩹 표 안에서도 잔상 제거 (사용자 요청). 임계값 -15 통합 + halo 1회 통합. 표 보호는 borderMask + 휴리스틱 선 + drawImage 복원이 책임. 잔상 안 남고 표도 무사." },
   { version: "v23.101", date: "2026-05-08", desc: "🎯 표 안/밖 분기 (사용자 요청). textBox 가 lineRect/fillRect 30px 이내면 \"표 영역\" → 휴리스틱 선 보호 + 임계값 -30 + drawImage 복원. 그 외 본문은 임계값 -15 + halo 1회 → 잔상 제거." },
   { version: "v23.100", date: "2026-05-08", desc: "🛡️ 픽셀 휴리스틱 선 감지 추가 — operatorList 가 누락한 표 테두리도 보호. 작업영역 안에서 어두운 픽셀이 70% 이상인 행/열은 \"선\" 으로 자동 판정 → 그 행/열 절대 안 지움. lineRects + 휴리스틱 + drawImage 복원 3중 보호." },
   { version: "v23.99", date: "2026-05-08", desc: "🛡️ 표 100% 원본 복원 — PDF 로드 시점에 canvas 클론 보관 → erase 후 lineRects/fillRect 4변 영역을 원본에서 drawImage 로 그대로 덮음. 색·두께·AA 100% 일치. fillRect 추정값보다 정확." },
