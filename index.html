@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.85<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.86<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -2331,85 +2331,85 @@ function attachPageInteractions(pg) {
     return [255, 255, 255];
   }
 
-  // 🎯 v23.85 — 처음부터 다시. 단순 원칙:
-  //   1) 10배 확대 (정밀도 ↑)
-  //   2) 각 픽셀 검사 — 어두우면 (<200 brightness) "글씨"
-  //   3) 글씨 픽셀만 → 가장 가까운 밝은 인접 픽셀 색 복사 (1-3px 안에서)
-  //   4) 다른 모든 픽셀 (배경·표 테두리·이미지) — 절대 안 건드림
-  //   Telea 없음, snap 없음, 채움 없음. 픽셀 단위 nearest neighbor.
+  // 🎯 v23.86 — 글자 템플릿 매칭 + 직접 픽셀 교체 (사용자 요청 — 흐림 없이 정확)
+  //   1) textBox.str 의 실제 글자를 hidden canvas 에 동일 폰트/크기로 렌더 (템플릿)
+  //   2) 템플릿에서 어두운 위치 = "글자가 있어야 할 픽셀"
+  //   3) 메인 canvas 의 그 위치도 어두우면 = 진짜 텍스트 → 흰색으로 직접 교체
+  //   4) 템플릿이 어두운 곳 + 5px 주변 까지 dilate (글자 안티앨리어싱 흡수)
+  //   업스케일/다운샘플 없음 → 흐림 없음
   function paintSingleTextBox(it, allIntersections) {
-    const PAD = 4;
+    if (!it.str || !it.str.trim()) return;
+    const PAD = 3;
     const ix = Math.max(0, Math.floor(it.x - PAD));
     const iy = Math.max(0, Math.floor(it.y - PAD));
     const ex = Math.min(canvas.width, Math.ceil(it.x + it.w + PAD));
     const ey = Math.min(canvas.height, Math.ceil(it.y + it.h + PAD));
     const W = ex - ix, H = ey - iy;
     if (W <= 4 || H <= 4) return;
-    // 1) 원본 영역 추출 + 10배 확대
-    const SCALE = 10;
-    const W2 = W * SCALE, H2 = H * SCALE;
-    const srcCv = document.createElement('canvas');
-    srcCv.width = W; srcCv.height = H;
-    const srcCtx = srcCv.getContext('2d', { willReadFrequently: true });
     const fullImg = ctx.getImageData(ix, iy, W, H);
-    srcCtx.putImageData(fullImg, 0, 0);
-    const bigCv = document.createElement('canvas');
-    bigCv.width = W2; bigCv.height = H2;
-    const bctx = bigCv.getContext('2d', { willReadFrequently: true });
-    bctx.imageSmoothingEnabled = true; bctx.imageSmoothingQuality = 'high';
-    bctx.drawImage(srcCv, 0, 0, W2, H2);
-    const bigImg = bctx.getImageData(0, 0, W2, H2);
-    const big = bigImg.data;
-
-    // 2) 10배 확대 영역 안에서 어두운 픽셀 찾기 + 가장 가까운 밝은 인접 픽셀 복사
-    //    바깥으로부터 1, 2, 3, ..., 최대 30 픽셀 확장 검사 (10배 = 원본 3px 거리)
-    function isText(p) {
-      return (big[p] + big[p+1] + big[p+2]) / 3 < 200;
+    const fd = fullImg.data;
+    // 1) 템플릿 canvas 에 같은 글자 렌더
+    const tplCv = document.createElement('canvas');
+    tplCv.width = W; tplCv.height = H;
+    const tctx = tplCv.getContext('2d', { willReadFrequently: true });
+    tctx.fillStyle = '#fff';
+    tctx.fillRect(0, 0, W, H);
+    tctx.fillStyle = '#000';
+    const fontPx = it.fontHeight || (it.h * 0.85) || 12;
+    const fontFamily = mapFontForCanvas(it.fontName) || '맑은 고딕, sans-serif';
+    tctx.font = `${fontPx}px ${fontFamily}`;
+    tctx.textBaseline = 'alphabetic';
+    // 글자는 textBox 의 baseline 위치에서 그려짐. PAD 만큼 offset.
+    tctx.fillText(it.str, PAD, PAD + fontPx * 0.85);
+    const tplData = tctx.getImageData(0, 0, W, H).data;
+    // 2) 템플릿 어두운 픽셀 마스크 (5px dilation 으로 AA halo 까지 흡수)
+    const tplMask = new Uint8Array(W * H);
+    for (let i = 0; i < tplData.length; i += 4) {
+      const v = (tplData[i] + tplData[i+1] + tplData[i+2]) / 3;
+      if (v < 200) tplMask[i / 4] = 1;
     }
-    const out = new Uint8ClampedArray(big);  // 결과 버퍼
-    for (let yy = 0; yy < H2; yy++) {
-      for (let xx = 0; xx < W2; xx++) {
-        const p = (yy * W2 + xx) * 4;
-        if (!isText(p)) continue;  // 배경/테두리 — 안 건드림
-        // 인접에서 밝은 픽셀 찾기
-        let found = false;
-        for (let radius = 1; radius <= 30 && !found; radius++) {
-          for (let i = -radius; i <= radius && !found; i++) {
-            // 위/아래/좌/우 4면
-            for (const [dy, dx] of [[-radius, i], [radius, i], [i, -radius], [i, radius]]) {
-              const nx = xx + dx, ny = yy + dy;
-              if (nx < 0 || ny < 0 || nx >= W2 || ny >= H2) continue;
-              const np = (ny * W2 + nx) * 4;
-              if (!isText(np)) {
-                out[p] = big[np]; out[p+1] = big[np+1]; out[p+2] = big[np+2];
-                found = true;
-                break;
-              }
-            }
+    // 5px dilation
+    const dil = new Uint8Array(tplMask);
+    const DIL = 5;
+    for (let yy = 0; yy < H; yy++) {
+      for (let xx = 0; xx < W; xx++) {
+        if (tplMask[yy * W + xx]) continue;
+        let near = false;
+        for (let dy = -DIL; dy <= DIL && !near; dy++) {
+          for (let dx = -DIL; dx <= DIL && !near; dx++) {
+            const nx = xx + dx, ny = yy + dy;
+            if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+            if (tplMask[ny * W + nx]) near = true;
           }
         }
-        if (!found) { out[p] = 255; out[p+1] = 255; out[p+2] = 255; }
+        if (near) dil[yy * W + xx] = 1;
       }
     }
-
-    // 3) 다운샘플 — 결과를 원본 1배로
-    bctx.putImageData(new ImageData(out, W2, H2), 0, 0);
-    srcCtx.imageSmoothingEnabled = true;
-    srcCtx.imageSmoothingQuality = 'high';
-    srcCtx.clearRect(0, 0, W, H);
-    srcCtx.drawImage(bigCv, 0, 0, W, H);
-    const finalImg = srcCtx.getImageData(0, 0, W, H);
-    const fd = finalImg.data;
-    const orig = fullImg.data;
-
-    // 4) 원본과 비교 — 어두운 픽셀이었던 곳만 결과로 교체. 나머지는 원본 그대로
-    for (let i = 0; i < orig.length; i += 4) {
-      const wasText = (orig[i] + orig[i+1] + orig[i+2]) / 3 < 200;
-      if (!wasText) {
-        fd[i] = orig[i]; fd[i+1] = orig[i+1]; fd[i+2] = orig[i+2]; fd[i+3] = orig[i+3];
+    // 3) 메인 canvas + 템플릿 둘 다 어두운 픽셀만 흰색 교체
+    let touched = 0;
+    for (let i = 0; i < fd.length; i += 4) {
+      if (!dil[i / 4]) continue;
+      const v = (fd[i] + fd[i+1] + fd[i+2]) / 3;
+      if (v < 215) {  // 본문 글자 본체+AA
+        fd[i] = 255; fd[i+1] = 255; fd[i+2] = 255;
+        touched++;
       }
     }
-    ctx.putImageData(finalImg, ix, iy);
+    ctx.putImageData(fullImg, ix, iy);
+  }
+  // 폰트 이름 매핑 (PDF.js fontName → CSS font-family)
+  function mapFontForCanvas(name) {
+    if (!name) return null;
+    const n = name.toLowerCase();
+    if (n.includes('malgun') || n.includes('maluen')) return '맑은 고딕, Malgun Gothic, sans-serif';
+    if (n.includes('dotum')) return '돋움, Dotum, sans-serif';
+    if (n.includes('gulim')) return '굴림, Gulim, sans-serif';
+    if (n.includes('batang')) return '바탕, Batang, serif';
+    if (n.includes('gungsuh') || n.includes('gungseo')) return '궁서, Gungsuh, serif';
+    if (n.includes('arial')) return 'Arial, sans-serif';
+    if (n.includes('times') || n.includes('tnr')) return '"Times New Roman", serif';
+    if (n.includes('calibri')) return 'Calibri, sans-serif';
+    return '맑은 고딕, Malgun Gothic, sans-serif';
   }
 
   // 🎨 Batch inpaint — 모든 textBox 영역을 한 번에 mask 로 묶어 inpaint
@@ -4296,6 +4296,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v23.86", date: "2026-05-08", desc: "🎯 글자 템플릿 매칭 (사용자 제안 - 등록 글자만 능동 삭제). textBox.str 의 실제 글자를 hidden canvas 에 동일 폰트로 렌더 → 템플릿. 템플릿 어두운 위치 + 메인 canvas 동일 위치 어두움 = 진짜 텍스트 → 흰색 직접 교체. 흐림 X 업스케일 X." },
   { version: "v23.85", date: "2026-05-08", desc: "🔄 글자 지우기 처음부터 다시 (사용자 요청). 10x 확대 → 어두운 픽셀만 → 가장 가까운 밝은 픽셀 복사 → 다운샘플. Telea 없음, snap 없음, 채움 없음. 배경·표 테두리 절대 안 건드림." },
   { version: "v23.84", date: "2026-05-08", desc: "🩹 snap 170→140 (한 단계 더 적극적). 잔재 6.76% → 더 적게 목표." },
   { version: "v23.83", date: "2026-05-08", desc: "🩹 white snap 임계값 200→170 (적극적). 분석 결과 180-199 범위 잔재 4% → snap 으로 제거." },
