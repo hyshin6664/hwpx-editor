@@ -7216,7 +7216,12 @@ function jumpToPage(n) {
 })();
 
 // 부팅
-bootEditor();
+// 테스트용 ?nohwp=1 — rhwp 엔진 부트 건너뛰기 (자동 검증 시 document_idle 보장)
+if (!new URLSearchParams(location.search).has('nohwp')) {
+  bootEditor();
+} else {
+  console.warn('[test] bootEditor skipped (?nohwp=1)');
+}
 // 데스크톱이면 검색 패널 항상 열림 (사용자 요청). 모바일은 사용자가 열기.
 setTimeout(() => { if (window.innerWidth > 720) openSearch(); }, 600);
 </script>
