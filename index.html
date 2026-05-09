@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.114<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.115<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -1159,7 +1159,8 @@ setTimeout(() => {
   try {
     const loadingVisible = !loading.classList.contains('hidden');
     const flag = sessionStorage.getItem('solbox_self_heal_done');
-    if (loadingVisible && flag !== 'yes' && navigator.serviceWorker) {
+    const isTestMode = new URLSearchParams(location.search).has('nohwp');
+    if (!isTestMode && loadingVisible && flag !== 'yes' && navigator.serviceWorker) {
       sessionStorage.setItem('solbox_self_heal_done', 'yes');
       console.warn('Self-heal: SW unregister + reload');
       navigator.serviceWorker.getRegistrations().then(regs => {
@@ -1445,7 +1446,12 @@ function enableSelfTestUI() {
 }
 
 // 파일 라우터 — 확장자에 따라 적절한 모드로 마운트 (reload 없음, 깔끔히 청소)
+// 🔬 ?nohwp=1 테스트 모드에서 외부에서 호출 가능하도록 노출
+if (new URLSearchParams(location.search).has('nohwp')) {
+  window.__testLoadFile = (file) => loadFile(file);
+}
 async function loadFile(file) {
+  // console.log('[TRACE loadFile]', file?.name, file?.size);
   const lower = file.name.toLowerCase();
   let newMode = null;
   if (lower.endsWith(".hwp") || lower.endsWith(".hwpx")) newMode = 'hwp';
@@ -1488,7 +1494,7 @@ async function loadFile(file) {
   clearAllHostsAndState();
 
   if (newMode === 'hwp') return mountHwp(file);
-  if (newMode === 'pdf') return mountPdf(file);
+  if (newMode === 'pdf') { // console.log('[TRACE -> mountPdf]'); return mountPdf(file); }
   if (newMode === 'docx') return mountDocx(file);
 }
 
@@ -1676,21 +1682,30 @@ async function getPdfjs() {
 }
 
 async function mountPdf(file) {
+  // console.log('[TRACE mountPdf entered]');
   try {
     showLoading("PDF 여는 중…", file.name);
+    // console.log('[TRACE showLoading done]');
     const buffer = await file.arrayBuffer();
+    // console.log('[TRACE got buffer]', buffer.byteLength);
     const bytes = new Uint8Array(buffer);
     pdfState = { bytes, pages: [], tool: 'pointer', fontSize: 12, fontFamily: 'NotoSansKR', _cleanups: [] };
     currentFilename = file.name;
-    filenameLabel.textContent = file.name;
+    // console.log('[TRACE state set]');
+    if (typeof filenameLabel !== 'undefined' && filenameLabel) filenameLabel.textContent = file.name;
+    // console.log('[TRACE filename set]');
 
     if (editor && editor._iframe) editor._iframe.style.display = 'none';
+    // console.log('[TRACE iframe hidden]');
     let pdfHost = document.getElementById('pdfHost');
+    // console.log('[TRACE pdfHost initial]', !!pdfHost);
     if (!pdfHost) {
       pdfHost = document.createElement('div');
       pdfHost.id = 'pdfHost';
       pdfHost.style.cssText = 'width:100%;height:100%;overflow:auto;background:#525659;';
+      // console.log('[TRACE editorHost?]', typeof editorHost, !!editorHost);
       editorHost.appendChild(pdfHost);
+      // console.log('[TRACE pdfHost appended]');
     } else { pdfHost.innerHTML = ''; pdfHost.style.display = ''; }
 
     // 툴바
@@ -1814,8 +1829,11 @@ async function mountPdf(file) {
     pdfUndoBtn.addEventListener('click', () => pdfUndo());
     pdfRedoBtn.addEventListener('click', () => pdfRedo());
 
+    // console.log('[TRACE before getPdfjs]');
     const pdfjs = await getPdfjs();
+    // console.log('[TRACE after getPdfjs]');
     const loadingTask = pdfjs.getDocument({ data: bytes.slice() });
+    // console.log('[TRACE after getDocument]');
     pdfState._pdfDocLoadingTask = loadingTask;
     const pdfDoc = await loadingTask.promise;
     pdfState.numPages = pdfDoc.numPages;
@@ -1838,7 +1856,9 @@ async function mountPdf(file) {
       wrap.appendChild(overlay);
       pagesContainer.appendChild(wrap);
 
+      // console.log('[TRACE before render page', i, ']');
       await page.render({ canvasContext: canvas.getContext('2d', { willReadFrequently: true }), viewport }).promise;
+      // console.log('[TRACE after render page', i, ']');
 
       // PDF 좌표계 정보 (pdf-lib 저장용)
       const pdfPageWidth = viewport.width / SCALE;   // PDF points
@@ -2556,15 +2576,28 @@ function attachPageInteractions(pg) {
   //   각 투명 픽셀에서 좌→우 (없으면 우→좌) 방향으로 가장 가까운 불투명 픽셀 색 그대로 복사
   //   보간/블러 없음 → 뭉개짐 0. 단순한 직접 복사.
   function fillErasedPixels(intersections) {
-    // 🎨 v23.111 — pg.originalCanvas 의 textBox 바깥 영역에서 행별 셀 배경색 샘플링
-    //   인접 textBox 처리 후 캔버스가 망가져도 원본은 깨끗 → fallback 흰색 안 나옴
-    //   다른 textBox 영역은 무시 (다른 textBox 의 텍스트를 참고하지 않음)
-    const allTbX = (pg.textBoxes || []).map(tb => ({ x0: tb.x, x1: tb.x + tb.w, y0: tb.y, y1: tb.y + tb.h }));
-    function isInsideAnyTextBox(canvasX, canvasY) {
-      for (const t of allTbX) {
-        if (canvasX >= t.x0 - 1 && canvasX <= t.x1 + 1 && canvasY >= t.y0 - 1 && canvasY <= t.y1 + 1) return true;
+    // 🚀 v23.115 — textBox 영역을 한 번만 비트마스크로 만들어서 픽셀 체크 O(1)
+    //   기존: 모든 픽셀마다 207개 textBox 순회 → 매우 느림
+    if (!pg._tbMask) {
+      const cw = canvas.width, ch = canvas.height;
+      const mask = new Uint8Array(cw * ch);
+      for (const tb of (pg.textBoxes || [])) {
+        const x0 = Math.max(0, Math.floor(tb.x) - 1);
+        const y0 = Math.max(0, Math.floor(tb.y) - 1);
+        const x1 = Math.min(cw, Math.ceil(tb.x + tb.w) + 1);
+        const y1 = Math.min(ch, Math.ceil(tb.y + tb.h) + 1);
+        for (let yy = y0; yy < y1; yy++) {
+          for (let xx = x0; xx < x1; xx++) mask[yy * cw + xx] = 1;
+        }
       }
-      return false;
+      pg._tbMask = mask;
+      pg._tbMaskW = cw;
+    }
+    const _tbMask = pg._tbMask;
+    const _tbMaskW = pg._tbMaskW;
+    function isInsideAnyTextBox(canvasX, canvasY) {
+      if (canvasX < 0 || canvasY < 0 || canvasX >= _tbMaskW || canvasY * _tbMaskW + canvasX >= _tbMask.length) return false;
+      return !!_tbMask[canvasY * _tbMaskW + canvasX];
     }
     for (const it of intersections) {
       // PAD 80 — wider fallback 검색까지 커버
@@ -2640,12 +2673,17 @@ function attachPageInteractions(pg) {
         }
         // 3) 원본 행 전체에서 brightest 상위 픽셀
         if (samples.length < 3) {
+          // textBox 근처(±30px)로 한정 — 셀 경계 너머 페이지 흰 배경 침입 방지
           const bright = [];
-          for (let xx = 0; xx < W; xx++) {
+          const lo = Math.max(0, fillX0 - 30);
+          const hi = Math.min(W, fillX1 + 30);
+          for (let xx = lo; xx < hi; xx++) {
+            const cx = ix + xx, cy = iy + yy;
+            if (isInsideAnyTextBox(cx, cy)) continue;
             const i = (yy * W + xx) * 4;
             if (od[i+3] < 250) continue;
             const v = (od[i] + od[i+1] + od[i+2]) / 3;
-            if (v > 200) bright.push([od[i], od[i+1], od[i+2]]);
+            if (v > 180) bright.push([od[i], od[i+1], od[i+2]]);
           }
           if (bright.length > 0) {
             const rs = bright.map(s=>s[0]).sort((a,b)=>a-b);
@@ -4476,7 +4514,8 @@ setMode = function(m) {
 // =============================================================
 (function setupInstall() {
   // Service Worker 등록 + 업데이트 감지 → 새 버전 활성화되면 페이지 자동 새로고침 (한 번만)
-  if ('serviceWorker' in navigator) {
+  // ?nohwp=1 테스트 모드면 SW 등록 X (페이지 reload 방지)
+  if ('serviceWorker' in navigator && !new URLSearchParams(location.search).has('nohwp')) {
     navigator.serviceWorker.register('./sw.js').then(reg => {
       // 페이지 로드 직후 + 주기적으로 SW 업데이트 체크
       try { reg.update(); } catch(_){}
@@ -4609,6 +4648,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v23.115", date: "2026-05-10", desc: "🚀 채우기 성능 최적화 + 흰 블록 진짜 해결 — isInsideAnyTextBox 가 매 픽셀마다 207 textBox 순회하던 O(N) 을 비트마스크 O(1) 로 (수백배 빠름). fallback brightest 검색 범위 textBox ±30px 로 한정해 페이지 흰배경 침입 방지." },
   { version: "v23.114", date: "2026-05-09", desc: "🎨 흰 블록 3중 fallback + 표 복원 정제 — sampleRowBg 가 가까이→wider→원본 행 brightest 까지 3단계 fallback. 인접 textBox 둘러쌈에도 항상 셀 bg 잡음. 채우기 후 lineRect 복원에서 밑줄(textBox 안쪽 line) 제외. fillRect 4변 복원 제거 (이미 fill 에서 처리)." },
   { version: "v23.113", date: "2026-05-09", desc: "🛡️ 채우기 후 표 복원 추가 — fill 단계가 lineRect 위 픽셀을 덮어써 표 뭉개지던 문제. 채우기 끝나고 originalCanvas 의 lineRects/fillRect 4변 영역을 drawImage 로 다시 덮어 100% 복원." },
   { version: "v23.112", date: "2026-05-09", desc: "🎨 흰 블록 진짜 해결 — PAD 100→30, 검색 거리 textBox 옆 8px 만 (셀 경계 넘어 페이지 흰 배경 샘플링 방지). 위·아래 1~3px 도 같이 샘플 → 작은 셀 내부에서 안정적으로 셀 배경색 확보. 시뮬레이션 검증 완료." },
