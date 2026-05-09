@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.112<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.113<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -2662,6 +2662,27 @@ function attachPageInteractions(pg) {
         }
       }
       ctx.putImageData(img, ix, iy);
+      // 🛡️ 표 100% 원본 복원 — 채우기 후 lineRects/fillRect 4변 영역을 원본에서 그대로 덮음
+      if (pg.originalCanvas) {
+        const restoreRects = [];
+        for (const r of (pg.lineRects || [])) restoreRects.push(r);
+        for (const f of (pg.fillRects || [])) {
+          if (f.w < 5 || f.h < 5) continue;
+          restoreRects.push({ x: f.x, y: f.y, w: f.w, h: 1 });
+          restoreRects.push({ x: f.x, y: f.y + f.h - 1, w: f.w, h: 1 });
+          restoreRects.push({ x: f.x, y: f.y, w: 1, h: f.h });
+          restoreRects.push({ x: f.x + f.w - 1, y: f.y, w: 1, h: f.h });
+        }
+        for (const r of restoreRects) {
+          const rx0 = Math.max(ix, Math.floor(r.x) - 1);
+          const ry0 = Math.max(iy, Math.floor(r.y) - 1);
+          const rx1 = Math.min(ex, Math.ceil(r.x + r.w) + 1);
+          const ry1 = Math.min(ey, Math.ceil(r.y + r.h) + 1);
+          const rw = rx1 - rx0, rh = ry1 - ry0;
+          if (rw <= 0 || rh <= 0) continue;
+          ctx.drawImage(pg.originalCanvas, rx0, ry0, rw, rh, rx0, ry0, rw, rh);
+        }
+      }
     }
   }
   // 폰트 이름 매핑 (PDF.js fontName → CSS font-family)
@@ -4567,6 +4588,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v23.113", date: "2026-05-09", desc: "🛡️ 채우기 후 표 복원 추가 — fill 단계가 lineRect 위 픽셀을 덮어써 표 뭉개지던 문제. 채우기 끝나고 originalCanvas 의 lineRects/fillRect 4변 영역을 drawImage 로 다시 덮어 100% 복원." },
   { version: "v23.112", date: "2026-05-09", desc: "🎨 흰 블록 진짜 해결 — PAD 100→30, 검색 거리 textBox 옆 8px 만 (셀 경계 넘어 페이지 흰 배경 샘플링 방지). 위·아래 1~3px 도 같이 샘플 → 작은 셀 내부에서 안정적으로 셀 배경색 확보. 시뮬레이션 검증 완료." },
   { version: "v23.111", date: "2026-05-09", desc: "🎨 채우기 흰 블록 완전 해결 — pg.originalCanvas 의 textBox 바깥 깨끗한 셀 배경에서 행별 색 샘플링. 다른 textBox 영역 자동 skip. 인접 textBox 처리 후에도 깨끗한 색이 항상 잡혀서 fallback 흰색 안 나옴." },
   { version: "v23.110", date: "2026-05-09", desc: "🩹 채우기 잔재 점·dash 제거 (사용자 피드백). 1차 채우기 전에 row median 기준 25 이상 어둡고 채도>30 OR 밝기<100 인 픽셀을 잔재로 판정 → 투명화 → 인접 색으로 메움. borderMask 보호 유지. 정상 픽셀 안 건드림 (블록 패턴 X)." },
