@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.110<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.111<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -2556,21 +2556,33 @@ function attachPageInteractions(pg) {
   //   각 투명 픽셀에서 좌→우 (없으면 우→좌) 방향으로 가장 가까운 불투명 픽셀 색 그대로 복사
   //   보간/블러 없음 → 뭉개짐 0. 단순한 직접 복사.
   function fillErasedPixels(intersections) {
+    // 🎨 v23.111 — pg.originalCanvas 의 textBox 바깥 영역에서 행별 셀 배경색 샘플링
+    //   인접 textBox 처리 후 캔버스가 망가져도 원본은 깨끗 → fallback 흰색 안 나옴
+    //   다른 textBox 영역은 무시 (다른 textBox 의 텍스트를 참고하지 않음)
+    const allTbX = (pg.textBoxes || []).map(tb => ({ x0: tb.x, x1: tb.x + tb.w, y0: tb.y, y1: tb.y + tb.h }));
+    function isInsideAnyTextBox(canvasX, canvasY) {
+      for (const t of allTbX) {
+        if (canvasX >= t.x0 - 1 && canvasX <= t.x1 + 1 && canvasY >= t.y0 - 1 && canvasY <= t.y1 + 1) return true;
+      }
+      return false;
+    }
     for (const it of intersections) {
-      // PAD 30 — textBox 밖 30px 까지 함께 읽어서 인접 배경색 샘플링 가능하게
-      //   (작은 PAD 였을 때 textBox 가 글자로 꽉 차면 fallback 흰색 → 흰 블록 버그)
-      const PAD = 30;
+      // PAD 100 — 충분한 외부 영역 (인접 textBox 건너뛰고도 셀 배경 발견 가능)
+      const PAD = 100;
       const ix = Math.max(0, Math.floor(it.x - PAD));
       const iy = Math.max(0, Math.floor(it.y - PAD));
       const ex = Math.min(canvas.width, Math.ceil(it.x + it.w + PAD));
       const ey = Math.min(canvas.height, Math.ceil(it.y + it.h + PAD));
       const W = ex - ix, H = ey - iy;
       if (W < 2 || H < 2) continue;
-      // 원본 textBox 영역 (filling 대상 범위) — PAD 영역은 검색용일 뿐 fill 안 함
       const fillX0 = Math.max(0, Math.floor(it.x) - ix);
       const fillY0 = Math.max(0, Math.floor(it.y) - iy);
       const fillX1 = Math.min(W, Math.ceil(it.x + it.w) - ix);
       const fillY1 = Math.min(H, Math.ceil(it.y + it.h) - iy);
+      // 원본 캔버스 데이터 (셀 배경 깨끗한 상태)
+      const origCtx = pg.originalCanvas ? pg.originalCanvas.getContext('2d') : null;
+      const origImg = origCtx ? origCtx.getImageData(ix, iy, W, H) : null;
+      const od = origImg ? origImg.data : null;
       // 표 테두리 보호 마스크 — 단, textBox 내부에 들어있는 line 은 밑줄/취소선으로 판정해서 제외
       const borderMask = new Uint8Array(W * H);
       for (const r of (pg.lineRects || [])) {
@@ -2592,61 +2604,64 @@ function attachPageInteractions(pg) {
       }
       const img = ctx.getImageData(ix, iy, W, H);
       const d = img.data;
-      // 🩹 v23.110 — 1차 채우기 전에, fillBounds 안의 잔재 텍스트 픽셀(어두운/채도 높음)을 투명화
-      //   행 단위 우세 색 기준 25 이상 어두움 + (채도 > 30 OR 밝기 < 100) → 잔재 → 투명
-      //   borderMask 픽셀은 절대 안 건드림
-      for (let yy = fillY0; yy < fillY1; yy++) {
-        const rs = [];
-        for (let xx = 0; xx < W; xx++) {
-          const p = yy * W + xx;
-          if (borderMask[p]) continue;
-          const i = p * 4;
-          if (d[i+3] < 250) continue;
-          rs.push((d[i] + d[i+1] + d[i+2]) / 3);
-        }
-        if (rs.length < 8) continue;
-        rs.sort((a,b)=>a-b);
-        const startIdx = Math.floor(rs.length * 0.4);
-        const midIdx = Math.floor((rs.length + startIdx) / 2);
-        const bgAvg = rs[midIdx];
-        for (let xx = fillX0; xx < fillX1; xx++) {
-          const p = yy * W + xx;
-          if (borderMask[p]) continue;
-          const i = p * 4;
-          if (d[i+3] < 250) continue;
-          const v = (d[i] + d[i+1] + d[i+2]) / 3;
-          if (v >= bgAvg - 25) continue;
-          const sat = Math.max(d[i], d[i+1], d[i+2]) - Math.min(d[i], d[i+1], d[i+2]);
-          if (sat > 30 || v < 100) {
-            d[i+3] = 0;  // 투명화 → 1차 채우기에서 인접 색으로 메워짐
-          }
-        }
-      }
-      // 1차: textBox 영역 안의 투명 픽셀을 (PAD 까지 확장된 영역에서) 인접 불투명 색으로 채움
-      for (let yy = fillY0; yy < fillY1; yy++) {
-        for (let xx = fillX0; xx < fillX1; xx++) {
+      // 행별로 원본 캔버스에서 textBox 바깥의 깨끗한 셀 배경색 샘플링
+      function sampleRowBg(yy) {
+        if (!od) return null;
+        const canvasY = iy + yy;
+        // 좌측: textBox 시작 직전부터 PAD 끝까지, 다른 textBox 안에 있는 픽셀은 skip
+        const samples = [];
+        for (let xx = fillX0 - 1; xx >= 0; xx--) {
+          const canvasX = ix + xx;
+          if (isInsideAnyTextBox(canvasX, canvasY)) continue;
           const i = (yy * W + xx) * 4;
-          if (d[i+3] >= 250) continue;
-          let r = -1, g = -1, b = -1;
-          // 좌측 (textBox 밖 PAD 까지)
-          for (let nxx = xx - 1; nxx >= 0; nxx--) {
-            const ni = (yy * W + nxx) * 4;
-            if (d[ni+3] >= 250) { r = d[ni]; g = d[ni+1]; b = d[ni+2]; break; }
+          const v = (od[i] + od[i+1] + od[i+2]) / 3;
+          // 정상 배경 후보 (너무 어둡지 않은 픽셀)
+          if (od[i+3] >= 250 && v > 80) {
+            samples.push([od[i], od[i+1], od[i+2]]);
+            if (samples.length >= 5) break;
           }
-          if (r < 0) for (let nxx = xx + 1; nxx < W; nxx++) {
-            const ni = (yy * W + nxx) * 4;
-            if (d[ni+3] >= 250) { r = d[ni]; g = d[ni+1]; b = d[ni+2]; break; }
+        }
+        if (samples.length < 3) {
+          for (let xx = fillX1; xx < W; xx++) {
+            const canvasX = ix + xx;
+            if (isInsideAnyTextBox(canvasX, canvasY)) continue;
+            const i = (yy * W + xx) * 4;
+            const v = (od[i] + od[i+1] + od[i+2]) / 3;
+            if (od[i+3] >= 250 && v > 80) {
+              samples.push([od[i], od[i+1], od[i+2]]);
+              if (samples.length >= 5) break;
+            }
           }
-          if (r < 0) for (let nyy = yy - 1; nyy >= 0; nyy--) {
-            const ni = (nyy * W + xx) * 4;
-            if (d[ni+3] >= 250) { r = d[ni]; g = d[ni+1]; b = d[ni+2]; break; }
+        }
+        if (samples.length === 0) return null;
+        // 중앙값 (모드 근사) — outlier 영향 최소
+        const rs = samples.map(s => s[0]).sort((a,b)=>a-b);
+        const gs = samples.map(s => s[1]).sort((a,b)=>a-b);
+        const bs = samples.map(s => s[2]).sort((a,b)=>a-b);
+        const mid = Math.floor(samples.length / 2);
+        return [rs[mid], gs[mid], bs[mid]];
+      }
+      // 행별 fill — 어두운 잔재 픽셀 + 투명 픽셀 모두 셀 배경색으로 교체
+      for (let yy = fillY0; yy < fillY1; yy++) {
+        const bg = sampleRowBg(yy);
+        if (!bg) continue;
+        const bgAvg = (bg[0] + bg[1] + bg[2]) / 3;
+        for (let xx = fillX0; xx < fillX1; xx++) {
+          const p = yy * W + xx;
+          if (borderMask[p]) continue;
+          const i = p * 4;
+          // 투명 OR 배경보다 명확히 어두움 (잔재 텍스트) → 셀 배경색으로 교체
+          if (d[i+3] < 250) {
+            d[i] = bg[0]; d[i+1] = bg[1]; d[i+2] = bg[2]; d[i+3] = 255;
+            continue;
           }
-          if (r < 0) for (let nyy = yy + 1; nyy < H; nyy++) {
-            const ni = (nyy * W + xx) * 4;
-            if (d[ni+3] >= 250) { r = d[ni]; g = d[ni+1]; b = d[ni+2]; break; }
+          const v = (d[i] + d[i+1] + d[i+2]) / 3;
+          if (v < bgAvg - 25) {
+            const sat = Math.max(d[i], d[i+1], d[i+2]) - Math.min(d[i], d[i+1], d[i+2]);
+            if (sat > 30 || v < 120) {
+              d[i] = bg[0]; d[i+1] = bg[1]; d[i+2] = bg[2]; d[i+3] = 255;
+            }
           }
-          if (r >= 0) { d[i] = r; d[i+1] = g; d[i+2] = b; d[i+3] = 255; }
-          else { d[i] = 255; d[i+1] = 255; d[i+2] = 255; d[i+3] = 255; }
         }
       }
       ctx.putImageData(img, ix, iy);
@@ -4555,6 +4570,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v23.111", date: "2026-05-09", desc: "🎨 채우기 흰 블록 완전 해결 — pg.originalCanvas 의 textBox 바깥 깨끗한 셀 배경에서 행별 색 샘플링. 다른 textBox 영역 자동 skip. 인접 textBox 처리 후에도 깨끗한 색이 항상 잡혀서 fallback 흰색 안 나옴." },
   { version: "v23.110", date: "2026-05-09", desc: "🩹 채우기 잔재 점·dash 제거 (사용자 피드백). 1차 채우기 전에 row median 기준 25 이상 어둡고 채도>30 OR 밝기<100 인 픽셀을 잔재로 판정 → 투명화 → 인접 색으로 메움. borderMask 보호 유지. 정상 픽셀 안 건드림 (블록 패턴 X)." },
   { version: "v23.109", date: "2026-05-09", desc: "🌐 한글 엔진 로드 실패 픽스 (직원 사내망) — CDN 다단계 fallback (jsDelivr → esm.sh → unpkg) + 타임아웃 30→90초. 실패 메시지에 차단 도메인 안내." },
   { version: "v23.108", date: "2026-05-08", desc: "🩹 채우기 후 이상한 조각 패턴 수정 — 2차 정리 패스가 정상 픽셀까지 row median 으로 교체. 2차 패스 제거. 투명 픽셀에 인접 색 직접 복사하는 1차 채우기만 사용." },
