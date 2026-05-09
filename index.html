@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.108<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.109<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -1244,7 +1244,26 @@ async function bootEditor() {
   // showLoading("에디터 준비 중…", "rhwp 엔진을 처음 가져옵니다 (한 번만, 5~10초)");
   try {
     log("info", "import @rhwp/editor 시작 (백그라운드)");
-    const mod = await import("https://cdn.jsdelivr.net/npm/@rhwp/editor/+esm");
+    // 🌐 v23.109 — 사내망 CDN 차단 대비 다단계 fallback (jsDelivr → esm.sh → unpkg)
+    const CDN_URLS = [
+      "https://cdn.jsdelivr.net/npm/@rhwp/editor/+esm",
+      "https://esm.sh/@rhwp/editor",
+      "https://unpkg.com/@rhwp/editor?module",
+    ];
+    let mod = null;
+    let lastErr = null;
+    for (const url of CDN_URLS) {
+      try {
+        log("info", `CDN 시도: ${url}`);
+        mod = await import(url);
+        log("info", `CDN 성공: ${url}`);
+        break;
+      } catch (e) {
+        lastErr = e;
+        log("warn", `CDN 실패: ${url} — ${e.message || e}`);
+      }
+    }
+    if (!mod) throw lastErr || new Error("모든 CDN 실패");
     const createEditor = mod.createEditor || (mod.default && mod.default.createEditor);
     if (typeof createEditor !== "function") throw new Error("createEditor 함수를 찾지 못했습니다");
     log("info", "createEditor 호출 (iframe 로드 대기)");
@@ -1596,14 +1615,14 @@ async function sanitizeHwpx(buffer) {
 async function mountHwp(file) {
   // rhwp 엔진이 아직 안 받아졌으면 여기서 대기 (사용자가 한글 파일 열려고 할 때만)
   if (!editor || !editorReady) {
-    showLoading("한글 엔진 받는 중…", "처음 한 번만 5~10초 걸립니다");
+    showLoading("한글 엔진 받는 중…", "처음 한 번만 (사내망은 더 걸릴 수 있어요)");
     const start = Date.now();
-    while (!editorReady && Date.now() - start < 30000) {
+    while (!editorReady && Date.now() - start < 90000) {  // 30초 → 90초 (사내망 대비)
       await new Promise(r => setTimeout(r, 200));
     }
     if (!editorReady) {
       hideLoading();
-      alert("한글 엔진 로드 실패 — 인터넷 연결 확인 후 다시 시도해주세요.");
+      alert("한글 엔진 로드 실패 — 사내망에서 cdn.jsdelivr.net / esm.sh / unpkg.com 모두 차단되었을 수 있습니다.\n네트워크 관리자에게 위 도메인 허용 요청 부탁드립니다.\n(또는 다른 네트워크에서 시도)");
       return;
     }
   }
@@ -4506,6 +4525,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v23.109", date: "2026-05-09", desc: "🌐 한글 엔진 로드 실패 픽스 (직원 사내망) — CDN 다단계 fallback (jsDelivr → esm.sh → unpkg) + 타임아웃 30→90초. 실패 메시지에 차단 도메인 안내." },
   { version: "v23.108", date: "2026-05-08", desc: "🩹 채우기 후 이상한 조각 패턴 수정 — 2차 정리 패스가 정상 픽셀까지 row median 으로 교체. 2차 패스 제거. 투명 픽셀에 인접 색 직접 복사하는 1차 채우기만 사용." },
   { version: "v23.107", date: "2026-05-08", desc: "🩹 흰 블록 버그 수정 — fillErasedPixels 가 textBox 안에서만 인접색을 찾아서 글자가 빽빽하면 fallback 흰색이 됨. 검색 영역을 textBox 밖 30px(PAD) 까지 확장 → 셀 배경(회색·연한 색)이 정확히 샘플링됨. fill 대상은 여전히 textBox 영역만." },
   { version: "v23.106", date: "2026-05-08", desc: "🩹 [지우고 채우기] 밑줄·취소선도 제거 — textBox 안쪽에 완전히 들어있고 길이가 textBox 의 130% 이내면 밑줄/취소선으로 판정 → borderMask 에서 제외 → 같이 지움. 표 테두리(textBox 밖)는 여전히 보호." },
