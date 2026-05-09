@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.113<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.114<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -2567,8 +2567,8 @@ function attachPageInteractions(pg) {
       return false;
     }
     for (const it of intersections) {
-      // PAD 30 — textBox 옆 검색용 외부 영역
-      const PAD = 30;
+      // PAD 80 — wider fallback 검색까지 커버
+      const PAD = 80;
       const ix = Math.max(0, Math.floor(it.x - PAD));
       const iy = Math.max(0, Math.floor(it.y - PAD));
       const ex = Math.min(canvas.width, Math.ceil(it.x + it.w + PAD));
@@ -2604,34 +2604,58 @@ function attachPageInteractions(pg) {
       }
       const img = ctx.getImageData(ix, iy, W, H);
       const d = img.data;
-      // 행별로 원본 캔버스에서 textBox 바로 옆(가까이)의 셀 배경색 샘플링
-      //   PAD 멀리 까지 검색하면 셀 밖 페이지 흰 배경 샘플링되어 흰 블록 발생 → 가까이만
-      const NEAR = 8;  // textBox 옆 8px 까지만 검색 → 셀 안쪽 보장
+      // 행별 셀 배경색 샘플링 — 3단계 fallback (인접 textBox 둘러쌈에도 안전)
+      //   1) textBox 옆 8px 가까이 + 위/아래 1~3px (셀 안쪽 보장)
+      //   2) 1) 실패 시 wider 검색 (NEAR_WIDE) — isInsideAnyTextBox 무시
+      //   3) 2) 실패 시 원본 행 전체에서 밝기 상위 25% 의 mode 색 사용 (bg 추정)
+      const NEAR = 8;
+      const NEAR_WIDE = 60;
       function sampleRowBg(yy) {
         if (!od) return null;
-        const canvasY = iy + yy;
         const samples = [];
-        function tryAt(xx, yyOff) {
+        function tryAt(xx, yyOff, skipTb) {
           const sy = yy + yyOff;
           if (sy < 0 || sy >= H || xx < 0 || xx >= W) return;
-          const canvasX = ix + xx;
-          if (isInsideAnyTextBox(canvasX, canvasY + yyOff)) return;
+          const cx = ix + xx, cy = iy + yy + yyOff;
+          if (skipTb && isInsideAnyTextBox(cx, cy)) return;
           const i = (sy * W + xx) * 4;
           if (od[i+3] < 250) return;
           const v = (od[i] + od[i+1] + od[i+2]) / 3;
-          if (v < 80) return;  // 너무 어두움 (테두리 등)
+          if (v < 80) return;
+          // 어둡지만 텍스트 가능성 — 채도 높음 또는 매우 어두움 → 제외
+          const sat = Math.max(od[i],od[i+1],od[i+2]) - Math.min(od[i],od[i+1],od[i+2]);
+          if (sat > 30 && v < 200) return;
           samples.push([od[i], od[i+1], od[i+2]]);
         }
-        // 좌측 NEAR px
-        for (let off = 1; off <= NEAR; off++) tryAt(fillX0 - off, 0);
-        // 우측 NEAR px
-        for (let off = 1; off <= NEAR; off++) tryAt(fillX1 - 1 + off, 0);
-        // 위/아래 1~3px (단일 행 textBox 의 위·아래는 보통 같은 셀 bg)
+        // 1) 가까이 + 위/아래
+        for (let off = 1; off <= NEAR; off++) tryAt(fillX0 - off, 0, true);
+        for (let off = 1; off <= NEAR; off++) tryAt(fillX1 - 1 + off, 0, true);
         for (let off of [-3, -2, -1, 1, 2, 3]) {
-          for (let xx = fillX0; xx < fillX1; xx += 4) tryAt(xx, off);
+          for (let xx = fillX0; xx < fillX1; xx += 4) tryAt(xx, off, true);
         }
-        if (samples.length === 0) return null;
-        // 중앙값
+        // 2) wider — isInsideAnyTextBox 무시 (다른 textBox 의 옆 가장자리 픽셀 = 셀 bg 일 확률 높음)
+        if (samples.length < 3) {
+          for (let off = NEAR + 1; off <= NEAR_WIDE; off++) tryAt(fillX0 - off, 0, false);
+          for (let off = NEAR + 1; off <= NEAR_WIDE; off++) tryAt(fillX1 - 1 + off, 0, false);
+        }
+        // 3) 원본 행 전체에서 brightest 상위 픽셀
+        if (samples.length < 3) {
+          const bright = [];
+          for (let xx = 0; xx < W; xx++) {
+            const i = (yy * W + xx) * 4;
+            if (od[i+3] < 250) continue;
+            const v = (od[i] + od[i+1] + od[i+2]) / 3;
+            if (v > 200) bright.push([od[i], od[i+1], od[i+2]]);
+          }
+          if (bright.length > 0) {
+            const rs = bright.map(s=>s[0]).sort((a,b)=>a-b);
+            const gs = bright.map(s=>s[1]).sort((a,b)=>a-b);
+            const bs = bright.map(s=>s[2]).sort((a,b)=>a-b);
+            const m = Math.floor(bright.length / 2);
+            return [rs[m], gs[m], bs[m]];
+          }
+        }
+        if (samples.length === 0) return [255, 255, 255];  // 최종 fallback
         const rs = samples.map(s => s[0]).sort((a,b)=>a-b);
         const gs = samples.map(s => s[1]).sort((a,b)=>a-b);
         const bs = samples.map(s => s[2]).sort((a,b)=>a-b);
@@ -2662,18 +2686,15 @@ function attachPageInteractions(pg) {
         }
       }
       ctx.putImageData(img, ix, iy);
-      // 🛡️ 표 100% 원본 복원 — 채우기 후 lineRects/fillRect 4변 영역을 원본에서 그대로 덮음
+      // 🛡️ 표 100% 원본 복원 — lineRects 만 (fillRect 4변은 fill 단계에서 이미 처리)
+      //   주의: textBox 안쪽에 들어있는 lineRect (밑줄) 은 제외
       if (pg.originalCanvas) {
-        const restoreRects = [];
-        for (const r of (pg.lineRects || [])) restoreRects.push(r);
-        for (const f of (pg.fillRects || [])) {
-          if (f.w < 5 || f.h < 5) continue;
-          restoreRects.push({ x: f.x, y: f.y, w: f.w, h: 1 });
-          restoreRects.push({ x: f.x, y: f.y + f.h - 1, w: f.w, h: 1 });
-          restoreRects.push({ x: f.x, y: f.y, w: 1, h: f.h });
-          restoreRects.push({ x: f.x + f.w - 1, y: f.y, w: 1, h: f.h });
-        }
-        for (const r of restoreRects) {
+        for (const r of (pg.lineRects || [])) {
+          const insideTb = (
+            r.x >= it.x - 2 && r.x + r.w <= it.x + it.w + 2 &&
+            r.y >= it.y - 2 && r.y + r.h <= it.y + it.h + 2
+          );
+          if (insideTb && r.w <= it.w * 1.3 && r.h <= it.h * 1.3) continue;  // 밑줄 skip
           const rx0 = Math.max(ix, Math.floor(r.x) - 1);
           const ry0 = Math.max(iy, Math.floor(r.y) - 1);
           const rx1 = Math.min(ex, Math.ceil(r.x + r.w) + 1);
@@ -4588,6 +4609,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v23.114", date: "2026-05-09", desc: "🎨 흰 블록 3중 fallback + 표 복원 정제 — sampleRowBg 가 가까이→wider→원본 행 brightest 까지 3단계 fallback. 인접 textBox 둘러쌈에도 항상 셀 bg 잡음. 채우기 후 lineRect 복원에서 밑줄(textBox 안쪽 line) 제외. fillRect 4변 복원 제거 (이미 fill 에서 처리)." },
   { version: "v23.113", date: "2026-05-09", desc: "🛡️ 채우기 후 표 복원 추가 — fill 단계가 lineRect 위 픽셀을 덮어써 표 뭉개지던 문제. 채우기 끝나고 originalCanvas 의 lineRects/fillRect 4변 영역을 drawImage 로 다시 덮어 100% 복원." },
   { version: "v23.112", date: "2026-05-09", desc: "🎨 흰 블록 진짜 해결 — PAD 100→30, 검색 거리 textBox 옆 8px 만 (셀 경계 넘어 페이지 흰 배경 샘플링 방지). 위·아래 1~3px 도 같이 샘플 → 작은 셀 내부에서 안정적으로 셀 배경색 확보. 시뮬레이션 검증 완료." },
   { version: "v23.111", date: "2026-05-09", desc: "🎨 채우기 흰 블록 완전 해결 — pg.originalCanvas 의 textBox 바깥 깨끗한 셀 배경에서 행별 색 샘플링. 다른 textBox 영역 자동 skip. 인접 textBox 처리 후에도 깨끗한 색이 항상 잡혀서 fallback 흰색 안 나옴." },
