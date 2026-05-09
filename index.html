@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.109<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.110<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -2592,6 +2592,36 @@ function attachPageInteractions(pg) {
       }
       const img = ctx.getImageData(ix, iy, W, H);
       const d = img.data;
+      // 🩹 v23.110 — 1차 채우기 전에, fillBounds 안의 잔재 텍스트 픽셀(어두운/채도 높음)을 투명화
+      //   행 단위 우세 색 기준 25 이상 어두움 + (채도 > 30 OR 밝기 < 100) → 잔재 → 투명
+      //   borderMask 픽셀은 절대 안 건드림
+      for (let yy = fillY0; yy < fillY1; yy++) {
+        const rs = [];
+        for (let xx = 0; xx < W; xx++) {
+          const p = yy * W + xx;
+          if (borderMask[p]) continue;
+          const i = p * 4;
+          if (d[i+3] < 250) continue;
+          rs.push((d[i] + d[i+1] + d[i+2]) / 3);
+        }
+        if (rs.length < 8) continue;
+        rs.sort((a,b)=>a-b);
+        const startIdx = Math.floor(rs.length * 0.4);
+        const midIdx = Math.floor((rs.length + startIdx) / 2);
+        const bgAvg = rs[midIdx];
+        for (let xx = fillX0; xx < fillX1; xx++) {
+          const p = yy * W + xx;
+          if (borderMask[p]) continue;
+          const i = p * 4;
+          if (d[i+3] < 250) continue;
+          const v = (d[i] + d[i+1] + d[i+2]) / 3;
+          if (v >= bgAvg - 25) continue;
+          const sat = Math.max(d[i], d[i+1], d[i+2]) - Math.min(d[i], d[i+1], d[i+2]);
+          if (sat > 30 || v < 100) {
+            d[i+3] = 0;  // 투명화 → 1차 채우기에서 인접 색으로 메워짐
+          }
+        }
+      }
       // 1차: textBox 영역 안의 투명 픽셀을 (PAD 까지 확장된 영역에서) 인접 불투명 색으로 채움
       for (let yy = fillY0; yy < fillY1; yy++) {
         for (let xx = fillX0; xx < fillX1; xx++) {
@@ -4525,6 +4555,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v23.110", date: "2026-05-09", desc: "🩹 채우기 잔재 점·dash 제거 (사용자 피드백). 1차 채우기 전에 row median 기준 25 이상 어둡고 채도>30 OR 밝기<100 인 픽셀을 잔재로 판정 → 투명화 → 인접 색으로 메움. borderMask 보호 유지. 정상 픽셀 안 건드림 (블록 패턴 X)." },
   { version: "v23.109", date: "2026-05-09", desc: "🌐 한글 엔진 로드 실패 픽스 (직원 사내망) — CDN 다단계 fallback (jsDelivr → esm.sh → unpkg) + 타임아웃 30→90초. 실패 메시지에 차단 도메인 안내." },
   { version: "v23.108", date: "2026-05-08", desc: "🩹 채우기 후 이상한 조각 패턴 수정 — 2차 정리 패스가 정상 픽셀까지 row median 으로 교체. 2차 패스 제거. 투명 픽셀에 인접 색 직접 복사하는 1차 채우기만 사용." },
   { version: "v23.107", date: "2026-05-08", desc: "🩹 흰 블록 버그 수정 — fillErasedPixels 가 textBox 안에서만 인접색을 찾아서 글자가 빽빽하면 fallback 흰색이 됨. 검색 영역을 textBox 밖 30px(PAD) 까지 확장 → 셀 배경(회색·연한 색)이 정확히 샘플링됨. fill 대상은 여전히 textBox 영역만." },
