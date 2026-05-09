@@ -863,7 +863,7 @@
       <span class="name">Solbox Docs</span>
       <span class="sub">.hwp · .hwpx · .docx · .pdf</span>
     </div>
-    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.115<span class="dot"></span></button>
+    <button class="ver-btn" id="verBtn" title="업데이트 내역">v23.116<span class="dot"></span></button>
     <button class="install-btn" id="installBtn" title="PC 바탕화면 또는 휴대폰 홈 화면에 앱처럼 추가 — 다음부터 한 번에 열기" hidden>📌 바로가기</button>
   </div>
   <span class="filename" id="filenameLabel"></span>
@@ -1494,7 +1494,7 @@ async function loadFile(file) {
   clearAllHostsAndState();
 
   if (newMode === 'hwp') return mountHwp(file);
-  if (newMode === 'pdf') { // console.log('[TRACE -> mountPdf]'); return mountPdf(file); }
+  if (newMode === 'pdf') return mountPdf(file);
   if (newMode === 'docx') return mountDocx(file);
 }
 
@@ -4648,6 +4648,7 @@ setMode = function(m) {
 })();
 
 const UPDATE_HISTORY = [
+  { version: "v23.116", date: "2026-05-10", desc: "🚨 핫픽스 — v23.115 에서 한 줄 코멘트가 if 블록 닫는 } 까지 주석화시켜 SyntaxError 발생, 모든 버튼 멈춤. 즉시 복구." },
   { version: "v23.115", date: "2026-05-10", desc: "🚀 채우기 성능 최적화 + 흰 블록 진짜 해결 — isInsideAnyTextBox 가 매 픽셀마다 207 textBox 순회하던 O(N) 을 비트마스크 O(1) 로 (수백배 빠름). fallback brightest 검색 범위 textBox ±30px 로 한정해 페이지 흰배경 침입 방지." },
   { version: "v23.114", date: "2026-05-09", desc: "🎨 흰 블록 3중 fallback + 표 복원 정제 — sampleRowBg 가 가까이→wider→원본 행 brightest 까지 3단계 fallback. 인접 textBox 둘러쌈에도 항상 셀 bg 잡음. 채우기 후 lineRect 복원에서 밑줄(textBox 안쪽 line) 제외. fillRect 4변 복원 제거 (이미 fill 에서 처리)." },
   { version: "v23.113", date: "2026-05-09", desc: "🛡️ 채우기 후 표 복원 추가 — fill 단계가 lineRect 위 픽셀을 덮어써 표 뭉개지던 문제. 채우기 끝나고 originalCanvas 의 lineRects/fillRect 4변 영역을 drawImage 로 다시 덮어 100% 복원." },
